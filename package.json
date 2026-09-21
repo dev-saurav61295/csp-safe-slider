@@ -1,6 +1,6 @@
 {
   "name": "csp-safe-slider",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "description": "A customizable, accessible content slider built for strict Content Security Policy environments.",
   "type": "module",
   "license": "MIT",

@@ -30,15 +30,27 @@ export function currentScrollPos(track: HTMLElement, axis: Axis): number {
 
 /**
  * Target scroll position to align `el`'s start edge to the viewport per
- * `align`, in the track's native scroll coordinate space (RTL-aware for
- * horizontal via the browser's standardized negative-offset convention).
+ * `align`, in the track's native scroll coordinate space.
+ *
+ * No separate RTL branch: in a `direction: rtl` flex container, a child's
+ * `offsetLeft` is *already* measured in the browser's own standardized
+ * negative-convention `scrollLeft` coordinate space (0 == the start/right
+ * edge, decreasing toward the end/left edge, exactly mirroring how
+ * `scrollLeft` itself behaves there) — flex lays RTL children out starting
+ * from the container's right edge and flowing left, so the first child's
+ * offsetLeft already lands at ~0 and later children get more negative,
+ * with no extra `scrollWidth`-relative shift needed. An earlier version of
+ * this function subtracted `scrollWidth - viewport` "to convert to RTL",
+ * which was simply wrong: it happened to go undetected because mandatory
+ * `scroll-snap` silently corrected the resulting near-miss target back to
+ * the nearest real slide for ordinary single-step navigation, but it broke
+ * outright once loop mode needed to target a specific *clone* precisely.
  */
 export function targetScrollFor(
   track: HTMLElement,
   el: HTMLElement,
   axis: Axis,
   align: 'start' | 'center' | 'end',
-  rtl: boolean,
 ): number {
   const start = slideStart(el, axis);
   const size = slideSize(el, axis);
@@ -48,28 +60,13 @@ export function targetScrollFor(
   if (align === 'center') pos = start - (viewport - size) / 2;
   else if (align === 'end') pos = start - (viewport - size);
 
-  if (axis === 'horizontal' && rtl) {
-    // Standardized RTL scrollLeft convention: 0 is the rightmost (start)
-    // edge and values decrease (negative) moving toward the end.
-    const maxScroll = track.scrollWidth - viewport;
-    pos = pos - maxScroll;
-  }
-
   return pos;
 }
 
 /** Which slide's start edge is closest to the current scroll position. */
-export function nearestSlideIndex(
-  track: HTMLElement,
-  slides: HTMLElement[],
-  axis: Axis,
-  rtl: boolean,
-): number {
+export function nearestSlideIndex(track: HTMLElement, slides: HTMLElement[], axis: Axis): number {
   if (slides.length === 0) return 0;
-  const viewport = viewportSize(track, axis);
-  const maxScroll = Math.max(0, contentSize(track, axis) - viewport);
-  let current = currentScrollPos(track, axis);
-  if (axis === 'horizontal' && rtl) current = current + maxScroll;
+  const current = currentScrollPos(track, axis);
 
   let closest = 0;
   let closestDelta = Infinity;

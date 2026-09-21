@@ -10,7 +10,7 @@ effect lives entirely in an external stylesheet you control.
 
 - No runtime dependencies, framework-independent core
 - TypeScript, strict mode, ships `.d.ts`
-- ESM + CJS, tree-shakeable, ~5.7 KB gzipped core JS
+- ESM + CJS, tree-shakeable, ~6.0 KB gzipped core JS
 - Verified against a real enforcing CSP header in Chromium, Firefox, and
   WebKit — see [docs/VALIDATION_REPORT.md](docs/VALIDATION_REPORT.md)
 
@@ -35,7 +35,19 @@ report-only).
 npm install csp-safe-slider
 ```
 
-## Quick start (external `<link>` + ESM)
+## Quick start (no bundler — external `<link>` + external `<script>`)
+
+Under a real enforcing CSP like the one in
+[Restrictive CSP example](#restrictive-csp-example) below, `script-src
+'self'` blocks **any** inline script — including an inline `<script
+type="module">` block — nonce or hash notwithstanding. It also has nothing
+to do with `import { createSlider } from 'csp-safe-slider'` resolving:
+browsers don't resolve bare package-name specifiers on their own (no
+`node_modules` lookup), so that line would fail in a `<script type="module">`
+even without any CSP in the picture. Both problems have the same fix: put
+your init code in your own external `.js` file, loaded via `<script
+type="module" src="...">`, and import the package from a URL your server
+actually serves — here, the built file straight out of `node_modules`:
 
 ```html
 <link rel="stylesheet" href="node_modules/csp-safe-slider/dist/csp-safe-slider.css" />
@@ -48,11 +60,30 @@ npm install csp-safe-slider
   </div>
 </div>
 
-<script type="module">
-  import { createSlider } from 'csp-safe-slider';
-  createSlider(document.getElementById('gallery'), { mode: 'rewind' });
-</script>
+<script type="module" src="gallery-init.js"></script>
 ```
+
+```js
+// gallery-init.js — served as a real file at whatever path you gave the
+// <script src>, not inlined into the HTML. The import path is a real,
+// browser-resolvable URL: wherever your static file server exposes
+// node_modules (or wherever you've copied dist/index.js — e.g. a `public/`
+// or `vendor/` directory your build copies it into).
+import { createSlider } from '/node_modules/csp-safe-slider/dist/index.js';
+
+createSlider(document.getElementById('gallery'), { mode: 'rewind' });
+```
+
+Not every static host serves `node_modules` by default — if yours doesn't,
+copy `node_modules/csp-safe-slider/dist/index.js` (and the CSS) into
+whatever directory your server does expose, and adjust both paths above
+to match. This exact external-script/external-CSS shape — not the inline
+`<script type="module">` a previous version of this README showed — is
+what [tests/e2e/fixtures/strict.html](tests/e2e/fixtures/strict.html) and
+[tests/e2e/fixtures/strict.init.js](tests/e2e/fixtures/strict.init.js) use,
+verified passing under the real enforcing header below by
+`tests/e2e/csp.spec.ts`; [examples/basic-gallery](examples/basic-gallery)
+is the same pattern as a complete runnable page.
 
 The `[data-slider-track]` wrapper and `[data-slider-slide]` children are a
 required markup contract — see [docs/API.md](docs/API.md#markup-contract).
@@ -157,13 +188,18 @@ npm run test:pack     # packs the real npm tarball and installs it into a clean 
 ## What's implemented vs. deferred
 
 The CSP contract, core navigation/lifecycle engine, finite/rewind/loop
-boundary modes, slide/fade transitions, autoplay, drag/keyboard/touch
-input, RTL/vertical/multi-slide/variable-width layout, accessibility
-fundamentals, and packaging are implemented and covered by 119 automated
-tests across three real browsers plus Node, all passing with zero skips.
-Virtualization, grid/multi-row layouts, parallax/zoom, deep-linking, and
-tested framework adapter packages are explicitly out of scope for this
-release — see [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md) for the full
+boundary modes (including a genuinely seamless clone-based `loop`, RTL and
+vertical included), slide/fade transitions, autoplay with full runtime
+`update()` support, drag/keyboard/native-touch input, RTL/vertical/
+multi-slide/variable-width layout, accessibility fundamentals, and
+packaging are implemented and covered by 32 unit + 210 Playwright tests
+(202 passing, 8 intentionally skipped where a browser lacks the relevant
+touch-emulation capability — see
+[docs/VALIDATION_REPORT.md](docs/VALIDATION_REPORT.md) for exactly which
+and why) across three real browsers plus Node. Virtualization, grid/
+multi-row layouts, parallax/zoom, deep-linking, and tested framework
+adapter packages are explicitly out of scope for this release — see
+[docs/COMPATIBILITY.md](docs/COMPATIBILITY.md) for the full
 reconciliation of what's implemented, tested, constrained, or deferred,
 and why. Real assistive-technology (screen reader/device) manual testing
 is tracked as pending in

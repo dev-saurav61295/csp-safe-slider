@@ -26,6 +26,7 @@ export class AutoplayController {
   private suspendedByHidden = false;
   private suspendedByOffscreen = false;
   private io: IntersectionObserver | null = null;
+  private attached = false;
 
   constructor(
     private root: HTMLElement,
@@ -34,6 +35,17 @@ export class AutoplayController {
   ) {}
 
   attach(): void {
+    this.attached = true;
+    this.attachListeners();
+  }
+
+  detach(): void {
+    this.clearTimer();
+    this.detachListeners();
+    this.attached = false;
+  }
+
+  private attachListeners(): void {
     if (this.opts.pauseOnHover) {
       this.root.addEventListener('mouseenter', this.onMouseEnter);
       this.root.addEventListener('mouseleave', this.onMouseLeave);
@@ -57,14 +69,31 @@ export class AutoplayController {
     }
   }
 
-  detach(): void {
-    this.clearTimer();
+  private detachListeners(): void {
     this.root.removeEventListener('mouseenter', this.onMouseEnter);
     this.root.removeEventListener('mouseleave', this.onMouseLeave);
     this.root.removeEventListener('focusin', this.onFocusIn);
     document.removeEventListener('visibilitychange', this.onVisibilityChange);
     this.io?.disconnect();
     this.io = null;
+  }
+
+  /**
+   * Applies a new `AutoplayOptions` (e.g. from `slider.update()`) without
+   * changing play/pause intent: interval/pause-rule changes take effect
+   * immediately (by re-establishing listeners for the new rule set and
+   * restarting the countdown if currently playing), but a prior explicit
+   * `pause()` stays paused — only the caller decides whether *enabling*
+   * autoplay from `false` should also start playing.
+   */
+  updateOptions(next: AutoplayOptions): void {
+    if (this.attached) this.detachListeners();
+    this.opts = next;
+    if (!this.opts.pauseOnHover) this.suspendedByHover = false;
+    if (!this.opts.pauseOnHiddenDocument) this.suspendedByHidden = false;
+    if (!this.opts.pauseOnOffscreen) this.suspendedByOffscreen = false;
+    if (this.attached) this.attachListeners();
+    this.reconcile();
   }
 
   play(): void {

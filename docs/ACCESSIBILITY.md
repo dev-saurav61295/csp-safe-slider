@@ -17,7 +17,15 @@ role indiscriminately.
 - **Native controls**: prev/next, dots, and the rotation toggle are real
   `<button type="button">` elements with `aria-label`s, not `<div
 onclick>`. Prev/next are `disabled` (not just visually hidden) at the
-  boundary in `finite` mode.
+  boundary in `finite` mode. Pagination dots are a plain labeled button
+  group (`aria-label="Go to slide N"` + `aria-current="true"` on the
+  active one), not a `role="tablist"`/`role="tab"` pattern — a tablist
+  requires roving `tabindex` _and_ moving DOM focus to the newly active
+  tab on every arrow-key-driven change, which this carousel's global
+  (not per-control) arrow-key handling doesn't do; a half-implemented
+  tablist (the previous behavior: `role="tab"` + `aria-selected` +
+  roving `tabindex`, but no focus-follows-selection) is worse than a
+  plain button group, so this release simplifies to the latter.
 - **Keyboard operation**: the track is explicitly `tabindex="0"` (see
   `src/core/slider.ts` — this was made explicit after finding that
   reliance on implicit "scrollable containers are focusable" browser
@@ -47,11 +55,27 @@ onclick>`. Prev/next are `disabled` (not just visually hidden) at the
 - **Focus preservation**: navigation never moves or removes the
   currently-focused element; `refresh()`/`update()` don't rebuild slide
   DOM nodes, only re-scan/re-label them.
+- **Fade-mode focus lifecycle**: inactive slides under `effect: 'fade'`
+  get `aria-hidden="true"` and every focusable descendant forced to
+  `tabindex="-1"`; activating a slide restores each descendant's
+  _original_ tabindex exactly (removing the attribute if it had none,
+  restoring a consumer-set value like `tabindex="0"` if it had one — not
+  just blanket-removing the attribute, which would silently strip a
+  consumer's own tabindex the first time their content became inactive).
+  Switching from `fade` to `slide` (via `update()`) restores every
+  currently-neutralized element in one pass, so no stale
+  `aria-hidden`/`tabindex="-1"` survives an effect change.
 - **Forced-colors / high-contrast**: `@media (forced-colors: active)`
   rules keep control borders visible in `css/csp-safe-slider.css`.
-- **RTL**: direction is read from the resolved `dir` (via `getComputedStyle`)
-  by default; arrow-key direction and scroll-position math both account
-  for it (including the browser's negative-`scrollLeft`-in-RTL convention).
+- **RTL / direction**: `direction: 'auto'` (the default) reads the
+  resolved `dir` (via `getComputedStyle`); `direction: 'ltr'`/`'rtl'`
+  explicitly sets the `dir` attribute on the root element (restoring
+  whatever was there before once you go back to `'auto'`, or on
+  `destroy()`), so an explicit option isn't silently ignored the way a
+  previous release's static-CSS-only read left it. Arrow-key direction
+  and scroll-position math both key off the same resolved value either
+  way, so layout, navigation, keyboard behavior, and `getState().direction`
+  always agree.
 
 ## Automated checks
 

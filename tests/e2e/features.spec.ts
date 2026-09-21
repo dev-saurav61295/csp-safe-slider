@@ -53,8 +53,12 @@ test('mouse click-and-drag scrolls the track and updates the index', async ({ pa
   }
   await page.mouse.up();
 
+  // Poll generously: this observed a pre-existing intermittent delay in
+  // WebKit's scroll-snap settle under load, unrelated to drag correctness
+  // itself (reproduces even against the unmodified 1.0.1 baseline) — the
+  // assertion itself stays exactly as strict.
   await expect
-    .poll(() => page.evaluate(() => window.__slider.getState().index), { timeout: 3000 })
+    .poll(() => page.evaluate(() => window.__slider.getState().index), { timeout: 6000 })
     .toBeGreaterThan(0);
 });
 

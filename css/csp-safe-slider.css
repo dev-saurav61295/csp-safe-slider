@@ -30,7 +30,14 @@
   scroll-behavior: smooth;
   scroll-padding-inline-start: 0;
   overscroll-behavior-x: contain;
-  touch-action: pan-y;
+  /* Must permit native panning on *both* axes: the track's own axis (so
+     touch swipe actually scrolls it — a value that only lists the
+     perpendicular axis, e.g. `pan-y` alone here, tells the browser NOT to
+     natively pan horizontally at all, which silently defeats touch
+     scrolling rather than "scoping" it) and the perpendicular axis (so a
+     vertical swipe still scrolls the page through the carousel). Pinch/
+     double-tap zoom stay enabled by not using `none`/`manipulation`. */
+  touch-action: pan-x pan-y pinch-zoom;
   /* Hide the native scrollbar while keeping the element natively scrollable
      and keyboard/AT operable; no inline style involved. */
   scrollbar-width: none;
@@ -46,11 +53,30 @@
   overflow-x: hidden;
   overflow-y: auto;
   scroll-snap-type: y mandatory;
-  touch-action: pan-x;
+  /* Same both-axes rationale as the horizontal rule above; touch-action
+     doesn't need to differ by axis since both directions must stay native
+     either way (own-axis scroll + cross-axis page scroll passthrough). */
 }
 
 .csp-slider__track--free {
   scroll-snap-type: none;
+}
+
+/* Applied for one paint around a loop boundary-correction jump (a direct
+   scrollLeft/scrollTop write) — two things, both required:
+   - `scroll-snap-type: none` so a mandatory snap container can't
+     asynchronously re-snap back toward the clone position it just
+     settled on;
+   - `scroll-behavior: auto` because a plain property write to
+     `scrollLeft`/`scrollTop` is *not* exempt from `scroll-behavior:
+     smooth` on `.csp-slider__track` above — without this override the
+     "instant" correction silently animates instead, both visibly
+     scrolling backward and racing the settle debounce that reads the
+     position before the animation finishes.
+   See `LoopEngine.jumpTo()` in src/core/loop.ts. */
+.csp-slider__track--correcting {
+  scroll-snap-type: none;
+  scroll-behavior: auto;
 }
 
 .csp-slider__track--dragging {
