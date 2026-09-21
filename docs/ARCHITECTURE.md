@@ -22,13 +22,13 @@ still requires either `commitStyles()` (an explicit inline-style write —
 forbidden outright) or leaving the final frame uncommitted, which snaps
 the element back to its non-animated position the instant the animation is
 garbage-collected — unacceptable for a persistent navigation state. Native
-scroll has no such problem: the scroll position *is* the persistent state,
+scroll has no such problem: the scroll position _is_ the persistent state,
 with no separate "commit" step.
 
 ## Seamless loop: measured clones, not assumed geometry
 
 **Decision**: `mode: 'loop'` clones the full real-slide set once before
-and once after itself, then jumps `scrollLeft` by a distance *measured*
+and once after itself, then jumps `scrollLeft` by a distance _measured_
 from actual `offsetLeft` layout when a scroll settles past the real block.
 
 **Why not a fixed-width assumption?** A simpler design (common in other
@@ -56,13 +56,13 @@ of slides, not thousands). This is documented as a real tradeoff in
 
 **Decision**: every dimension/color/spacing is a CSS custom property
 consumers set in their own external stylesheet; JS only reads layout
-(never writes it) and toggles classes/data-attributes whose *meaning* is
+(never writes it) and toggles classes/data-attributes whose _meaning_ is
 defined in the static package stylesheet.
 
 **Why**: this isn't just an API design preference — it's a direct
 consequence of the "no `element.style` writes" contract. If JS can't write
 style, arbitrary/dynamic layout values have nowhere else to live but CSS
-custom properties the *consumer* sets, read by *consumer* CSS rules. This
+custom properties the _consumer_ sets, read by _consumer_ CSS rules. This
 forced the option surface split described in
 [API.md](API.md#css-custom-property-contract): anything that would
 naturally be a runtime-computed pixel value (slide width, gap) must
@@ -79,7 +79,7 @@ native scroll container already gives swipe/momentum/rubber-banding.
 need transform-based positioning, since a scrollable native container
 isn't available to them) would mean fighting the browser's own gesture
 recognition for zero CSP benefit here, since native scrolling was already
-the positioning mechanism. Mouse *is* handled in JS because "click and
+the positioning mechanism. Mouse _is_ handled in JS because "click and
 drag to scroll a div" isn't native browser behavior for any element,
 touch or not.
 
@@ -113,7 +113,7 @@ programmatic `scrollTo()`.
 (one path for drag-end, one for touch-end, one for keyboard-triggered
 `goTo()` completion) — multiplies the surface area for bugs and
 inconsistent behavior between input methods, and native scroll doesn't
-actually distinguish *why* it moved. Treating "the scroll position
+actually distinguish _why_ it moved. Treating "the scroll position
 settled" as the single source of truth for "what slide are we on now"
 means every input method gets identical, correct index-tracking for free,
 including inputs this package doesn't specifically know about (e.g. a

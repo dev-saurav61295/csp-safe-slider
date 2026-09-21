@@ -1,16 +1,28 @@
 {
   "name": "csp-safe-slider",
-  "version": "0.1.0",
-  "description": "A CSP-safe, dependency-free content slider/carousel that never writes inline styles, style attributes, or inline event handlers.",
+  "version": "1.0.0",
+  "description": "A customizable, accessible content slider built for strict Content Security Policy environments.",
   "type": "module",
   "license": "MIT",
+  "author": "Saurav Kaushik",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dev-saurav61295/csp-safe-slider.git"
+  },
+  "bugs": {
+    "url": "https://github.com/dev-saurav61295/csp-safe-slider/issues"
+  },
+  "homepage": "https://github.com/dev-saurav61295/csp-safe-slider#readme",
   "keywords": [
     "slider",
     "carousel",
     "csp",
     "content-security-policy",
+    "accessible",
     "accessibility",
-    "typescript"
+    "typescript",
+    "touch",
+    "responsive"
   ],
   "sideEffects": [
     "*.css"
@@ -37,19 +49,26 @@
   "engines": {
     "node": ">=18"
   },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
   "scripts": {
+    "clean": "rm -rf dist",
     "build": "tsup && node scripts/copy-css.mjs",
     "dev": "tsup --watch",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:browser": "playwright test",
     "test:e2e": "playwright test",
+    "test:csp": "playwright test tests/e2e/csp.spec.ts",
     "test:ssr": "node scripts/verify-ssr.mjs",
     "test:pack": "bash scripts/verify-pack.sh",
     "lint": "eslint .",
     "format": "prettier --check .",
     "pack:dry": "npm pack --dry-run",
-    "prepublishOnly": "npm run build"
+    "prepack": "npm run build"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.10.0",

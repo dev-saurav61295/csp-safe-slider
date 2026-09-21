@@ -37,7 +37,7 @@ export function Gallery({ children }: { children: React.ReactNode }) {
 
 React never re-renders inside `data-slider-track` after mount in this
 pattern (children are set once via JSX, then `createSlider` owns DOM
-mutations within it). If your slide *content* changes, update the children
+mutations within it). If your slide _content_ changes, update the children
 normally and call `sliderRef.current?.refresh()` in a follow-up effect —
 don't let React reconcile the controls `createSlider` appended after the
 track, since it doesn't know about them.
@@ -102,7 +102,7 @@ Import `csp-safe-slider/styles.css` globally (e.g. in `angular.json`'s
 `styles` array) since Angular component `styleUrls` are view-encapsulated
 and would otherwise scope the slider's structural CSS unpredictably.
 
-## What's *not* covered here
+## What's _not_ covered here
 
 No React/Vue/Angular project in this repository actually builds or tests
 these snippets against real framework tooling/versions — that's explicitly

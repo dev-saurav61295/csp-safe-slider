@@ -6,17 +6,17 @@ Nothing here is projected or assumed passing.
 
 ## Tool versions
 
-| Tool | Version |
-| --- | --- |
-| TypeScript | 5.9.3 |
-| tsup | 8.5.1 |
-| vitest | 2.1.9 |
-| @playwright/test | 1.63.0 |
-| Playwright Chromium | Chrome for Testing 153.0.8010.12 |
-| Playwright Firefox | 155.0 |
-| Playwright WebKit | 26.6 |
+| Tool                 | Version                                              |
+| -------------------- | ---------------------------------------------------- |
+| TypeScript           | 5.9.3                                                |
+| tsup                 | 8.5.1                                                |
+| vitest               | 2.1.9                                                |
+| @playwright/test     | 1.63.0                                               |
+| Playwright Chromium  | Chrome for Testing 153.0.8010.12                     |
+| Playwright Firefox   | 155.0                                                |
+| Playwright WebKit    | 26.6                                                 |
 | @axe-core/playwright | 4.x (see package.json for the exact resolved semver) |
-| eslint | 9.39.5 with typescript-eslint 8.70.0 |
+| eslint               | 9.39.5 with typescript-eslint 8.70.0                 |
 
 ## Commands and results
 
@@ -25,6 +25,7 @@ Nothing here is projected or assumed passing.
 ```sh
 npm run typecheck    # tsc --noEmit
 ```
+
 **Result: PASS.** Zero errors, strict mode (`strict: true`,
 `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`, `noImplicitOverride`).
 
@@ -33,6 +34,7 @@ npm run typecheck    # tsc --noEmit
 ```sh
 npx eslint .
 ```
+
 **Result: PASS.** Zero errors, zero warnings.
 
 ### Unit tests
@@ -40,6 +42,7 @@ npx eslint .
 ```sh
 npm test    # vitest run
 ```
+
 **Result: PASS. 32/32 tests, 3 files.**
 Covers pure index/boundary math (`state.ts`: clamp/wrap/step/goTo/
 canPrev/canNext/page helpers), option normalization and validation
@@ -52,25 +55,25 @@ unsubscribe safety, `clear()`).
 
 ```sh
 npx playwright install chromium firefox webkit   # one-time
-npm run test:e2e   # playwright test
+npm run test:browser   # playwright test (alias: test:e2e)
 ```
-**Result: PASS. 86/87 tests passed, 1 intentionally skipped, across
-Chromium + Firefox + WebKit** (4 spec files × 3 browsers, minus the one
-WebKit-specific skip).
 
-| Spec file | Tests × 3 browsers | Result |
-| --- | --- | --- |
-| `csp.spec.ts` | 18 | 18/18 PASS |
-| `navigation.spec.ts` | 36 | 36/36 PASS |
-| `a11y.spec.ts` | 18 | 18/18 PASS |
-| `features.spec.ts` | 15 | 14/15 PASS, 1 SKIPPED |
+**Result: PASS. 87/87 tests passed, zero skips, across
+Chromium + Firefox + WebKit** (4 spec files × 3 browsers).
 
-The one skip: "mouse click-and-drag..." on WebKit, skipped with an inline
-reason (`test.skip(browserName === 'webkit', '...')`) — Playwright's
-WebKit driver doesn't reliably set `pointerType: 'mouse'` on synthetic
-mouse events in this headless environment, so the mouse-only drag gate
-never engages for that one test. This is marked **NOT RUN on real Safari**,
-not PASS — see [COMPATIBILITY.md](COMPATIBILITY.md).
+| Spec file            | Tests × 3 browsers | Result     |
+| -------------------- | ------------------ | ---------- |
+| `csp.spec.ts`        | 18                 | 18/18 PASS |
+| `navigation.spec.ts` | 36                 | 36/36 PASS |
+| `a11y.spec.ts`       | 18                 | 18/18 PASS |
+| `features.spec.ts`   | 15                 | 15/15 PASS |
+
+The mouse-drag test on WebKit was initially skipped during earlier
+development (a stale assumption that Playwright's WebKit driver doesn't
+set `pointerType: 'mouse'` reliably on synthetic mouse events). Re-checked
+during release preparation and found to actually pass consistently
+(verified 3 consecutive runs) — the skip was removed. No test is currently
+skipped in this suite.
 
 A **flaky-test root cause worth recording**: two negative-control tests
 initially raced (violation-event dispatch can trail the triggering
@@ -115,6 +118,7 @@ fixture loads, not inferred from one — see `tests/e2e/fixtures/server.mjs`
 ```sh
 npm run test:ssr
 ```
+
 **Result: PASS.** `scripts/verify-ssr.mjs` runs in a plain Node process
 (genuinely no `window`/`document` globals present at all — not a jsdom
 simulation) and imports both `dist/index.js` (ESM) and `dist/index.cjs`
@@ -126,8 +130,9 @@ throw.
 ```sh
 npm run test:pack
 ```
+
 **Result: PASS.** `scripts/verify-pack.sh` builds, runs `npm pack`
-for real (not `--dry-run`), installs *that tarball* into a throwaway
+for real (not `--dry-run`), installs _that tarball_ into a throwaway
 `npm install`-based consumer fixture in a temp directory, and verifies:
 `require.resolve('csp-safe-slider/styles.css')` and `.../theme.css`
 both resolve to real files with expected content, `index.d.ts` exists
@@ -140,6 +145,7 @@ tarball and temp directory on exit via a trap.
 ```sh
 npx playwright test tests/e2e/a11y.spec.ts
 ```
+
 **Result: PASS, 18/18 across 3 browsers.** Automated `@axe-core/playwright`
 scan against the strict-CSP fixture: **zero violations**. Additional
 targeted assertions: region/carousel/slide roles and labels present;
@@ -159,51 +165,52 @@ tracked separately as pending rather than silently assumed passing.
 npm run build        # tsup -> dist/{index.js,index.cjs,index.d.ts,index.d.cts} + CSS copy
 npm pack --dry-run
 ```
-**Result: PASS.** Verified tarball contents (12 files, 61.5 kB packed /
-254.9 kB unpacked): `dist/` (JS × 2 formats + sourcemaps, `.d.ts` × 2,
+
+**Result: PASS.** Verified tarball contents (12 files, 63.1 kB packed /
+259.4 kB unpacked): `dist/` (JS × 2 formats + sourcemaps, `.d.ts` × 2,
 both CSS files), `README.md`, `LICENSE`, `CHANGELOG.md`, `package.json`.
 `src/`, `tests/`, `examples/`, `docs/`, and config files are excluded via
 the `files` allow-list, not merely `.npmignore`.
 
 ### Bundle size (measured, not estimated)
 
-| Artifact | Raw | Minified | Minified + gzip |
-| --- | --- | --- | --- |
-| Core JS (`src/index.ts`, esbuild bundle) | — | 18,568 B | 5,706 B |
-| Structural CSS (`csp-safe-slider.css`) | 4,354 B | — | 1,515 B |
-| Optional theme CSS (`theme.css`) | 670 B | — | 383 B |
+| Artifact                                 | Raw     | Minified | Minified + gzip |
+| ---------------------------------------- | ------- | -------- | --------------- |
+| Core JS (`src/index.ts`, esbuild bundle) | —       | 18,568 B | 5,706 B         |
+| Structural CSS (`csp-safe-slider.css`)   | 4,354 B | —        | 1,515 B         |
+| Optional theme CSS (`theme.css`)         | 670 B   | —        | 383 B           |
 
 No arbitrary size budget was set before measuring (the brief says to set
-one *after* prototyping); ~5.7 KB gzipped core JS with zero runtime
+one _after_ prototyping); ~5.7 KB gzipped core JS with zero runtime
 dependencies is the number to budget against for a first release.
 
 ## Requirement-to-code/test traceability
 
-| Requirement (brief §) | Implemented in | Tested by |
-| --- | --- | --- |
-| No generated inline styles/handlers, ever (§2) | `src/core/*.ts` (no `.style` writes anywhere — verified by absence, see CSP.md) | `csp.spec.ts` (all specs), continuous `MutationObserver` |
-| Strict + fallback CSP fixtures (§2) | `tests/e2e/fixtures/server.mjs` | `csp.spec.ts` |
-| Negative control (§7.2) | `tests/e2e/fixtures/negative-control.html` | `csp.spec.ts` |
-| TypeScript strict, ESM+CJS, SSR-safe (§3) | `tsconfig.json`, `tsup.config.ts`, `src/**` (no top-level DOM access) | `npm run typecheck`, `test:ssr` |
-| Layout/theme in CSS, behavior in JS (§3) | `css/csp-safe-slider.css` custom properties + `src/core/options.ts` | `docs/API.md` contract table; example pages |
-| finite/rewind/loop boundary modes (§4) | `src/core/state.ts` (`computeStep`, `resolveGoTo`), `src/core/loop.ts` | `state.test.ts`, `navigation.spec.ts` |
-| Horizontal/vertical, LTR/RTL (§4) | `src/core/geometry.ts`, `src/core/keyboard.ts` | `navigation.spec.ts` |
-| slidesToScroll grouping, alignment (§4) | `src/core/state.ts`, `src/core/geometry.ts` (`targetScrollFor`) | `state.test.ts`, `navigation.spec.ts` |
-| Drag/keyboard/snap/free-scroll (§4) | `src/core/drag.ts`, `src/core/keyboard.ts`, CSS scroll-snap | `features.spec.ts`, `navigation.spec.ts` |
-| Slide/fade transitions (§4) | `src/core/slider.ts` (`resolveScrollTarget`, fade grid CSS) | `features.spec.ts` |
-| Autoplay + pause rules (§4) | `src/core/autoplay.ts` | `a11y.spec.ts` (focus-stop), `features.spec.ts` (leak proxy) |
-| Lifecycle incl. idempotent destroy (§4) | `src/core/slider.ts` public API | `navigation.spec.ts`, `features.spec.ts` |
-| WAI carousel roles/labels/focus (§5) | `src/core/slider.ts` (`setupA11y`, `labelSlides`) | `a11y.spec.ts` |
-| Reduced motion (§5) | `src/core/dom.ts` (`prefersReducedMotion`), `slider.ts` | `a11y.spec.ts` |
-| Public API contract (§6) | `src/index.ts`, `src/core/types.ts`, `src/core/slider.ts` | `state.test.ts`, `options.test.ts`, `events.test.ts`, all e2e specs |
-| Runnable examples (§6) | `examples/*` | Manual smoke test (console-error check, this session) — not part of the automated CI suite |
-| Framework integration guidance (§6) | `examples/framework-integration/README.md` | Not build-tested — explicitly labeled illustrative |
-| Unit + e2e test coverage (§7) | — | 32 unit + 87 e2e (86 pass, 1 documented skip) |
-| SSR import check (§7.9) | — | `scripts/verify-ssr.mjs` |
-| Packed tarball check (§7.10) | — | `scripts/verify-pack.sh` |
-| npm packaging metadata (§8) | `package.json` (`exports`, `types`, `files`, `sideEffects`) | `npm pack --dry-run` |
-| Size/performance measurement (§8) | — | esbuild minify + gzip, this report |
-| Docs: README/API/CSP/a11y/compat/changelog/license/release (§8) | `README.md`, `docs/*.md`, `CHANGELOG.md`, `LICENSE` | This report |
+| Requirement (brief §)                                           | Implemented in                                                                  | Tested by                                                                                  |
+| --------------------------------------------------------------- | ------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| No generated inline styles/handlers, ever (§2)                  | `src/core/*.ts` (no `.style` writes anywhere — verified by absence, see CSP.md) | `csp.spec.ts` (all specs), continuous `MutationObserver`                                   |
+| Strict + fallback CSP fixtures (§2)                             | `tests/e2e/fixtures/server.mjs`                                                 | `csp.spec.ts`                                                                              |
+| Negative control (§7.2)                                         | `tests/e2e/fixtures/negative-control.html`                                      | `csp.spec.ts`                                                                              |
+| TypeScript strict, ESM+CJS, SSR-safe (§3)                       | `tsconfig.json`, `tsup.config.ts`, `src/**` (no top-level DOM access)           | `npm run typecheck`, `test:ssr`                                                            |
+| Layout/theme in CSS, behavior in JS (§3)                        | `css/csp-safe-slider.css` custom properties + `src/core/options.ts`             | `docs/API.md` contract table; example pages                                                |
+| finite/rewind/loop boundary modes (§4)                          | `src/core/state.ts` (`computeStep`, `resolveGoTo`), `src/core/loop.ts`          | `state.test.ts`, `navigation.spec.ts`                                                      |
+| Horizontal/vertical, LTR/RTL (§4)                               | `src/core/geometry.ts`, `src/core/keyboard.ts`                                  | `navigation.spec.ts`                                                                       |
+| slidesToScroll grouping, alignment (§4)                         | `src/core/state.ts`, `src/core/geometry.ts` (`targetScrollFor`)                 | `state.test.ts`, `navigation.spec.ts`                                                      |
+| Drag/keyboard/snap/free-scroll (§4)                             | `src/core/drag.ts`, `src/core/keyboard.ts`, CSS scroll-snap                     | `features.spec.ts`, `navigation.spec.ts`                                                   |
+| Slide/fade transitions (§4)                                     | `src/core/slider.ts` (`resolveScrollTarget`, fade grid CSS)                     | `features.spec.ts`                                                                         |
+| Autoplay + pause rules (§4)                                     | `src/core/autoplay.ts`                                                          | `a11y.spec.ts` (focus-stop), `features.spec.ts` (leak proxy)                               |
+| Lifecycle incl. idempotent destroy (§4)                         | `src/core/slider.ts` public API                                                 | `navigation.spec.ts`, `features.spec.ts`                                                   |
+| WAI carousel roles/labels/focus (§5)                            | `src/core/slider.ts` (`setupA11y`, `labelSlides`)                               | `a11y.spec.ts`                                                                             |
+| Reduced motion (§5)                                             | `src/core/dom.ts` (`prefersReducedMotion`), `slider.ts`                         | `a11y.spec.ts`                                                                             |
+| Public API contract (§6)                                        | `src/index.ts`, `src/core/types.ts`, `src/core/slider.ts`                       | `state.test.ts`, `options.test.ts`, `events.test.ts`, all e2e specs                        |
+| Runnable examples (§6)                                          | `examples/*`                                                                    | Manual smoke test (console-error check, this session) — not part of the automated CI suite |
+| Framework integration guidance (§6)                             | `examples/framework-integration/README.md`                                      | Not build-tested — explicitly labeled illustrative                                         |
+| Unit + e2e test coverage (§7)                                   | —                                                                               | 32 unit + 87 e2e, 119/119 pass, zero skips                                                 |
+| SSR import check (§7.9)                                         | —                                                                               | `scripts/verify-ssr.mjs`                                                                   |
+| Packed tarball check (§7.10)                                    | —                                                                               | `scripts/verify-pack.sh`                                                                   |
+| npm packaging metadata (§8)                                     | `package.json` (`exports`, `types`, `files`, `sideEffects`)                     | `npm pack --dry-run`                                                                       |
+| Size/performance measurement (§8)                               | —                                                                               | esbuild minify + gzip, this report                                                         |
+| Docs: README/API/CSP/a11y/compat/changelog/license/release (§8) | `README.md`, `docs/*.md`, `CHANGELOG.md`, `LICENSE`                             | This report                                                                                |
 
 ## Reconciliation: implemented / tested / constrained / deferred
 
@@ -220,9 +227,11 @@ packed-tarball consumer resolution, npm packaging metadata.
 case, but no dedicated test asserts unequal widths specifically); autoplay
 hover/hidden-document/offscreen suspension (implemented in
 `autoplay.ts`'s state machine, but only the focus-stop rule has a
-dedicated assertion — the others share the same `reconcile()` mechanism);
-mouse drag on real Safari (WebKit headless synthetic-event limitation, see
-above).
+dedicated assertion — the others share the same `reconcile()` mechanism).
+Mouse drag is now verified in Chromium, Firefox, _and_ WebKit (Playwright)
+— real, non-headless Safari on macOS/iOS specifically was not exercised,
+since that requires an actual device/OS, not just a different browser
+engine build.
 
 **Constrained by design, not a bug**: `effect: 'fade'` rejects
 dragging and loop clones (no scroll axis exists in that mode); native

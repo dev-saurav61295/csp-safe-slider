@@ -10,13 +10,13 @@ role indiscriminately.
 - **Naming**: the root gets `role="region"`, `aria-roledescription="carousel"`,
   and a default `aria-label` if you didn't provide `aria-label`/
   `aria-labelledby` yourself (always provide your own describing the
-  carousel's *content*).
+  carousel's _content_).
 - **Slide semantics**: each real slide gets `role="group"` and
   `aria-roledescription="slide"`, with a default `aria-label` like
   `"2 of 5"` if you haven't set one.
 - **Native controls**: prev/next, dots, and the rotation toggle are real
   `<button type="button">` elements with `aria-label`s, not `<div
-  onclick>`. Prev/next are `disabled` (not just visually hidden) at the
+onclick>`. Prev/next are `disabled` (not just visually hidden) at the
   boundary in `finite` mode.
 - **Keyboard operation**: the track is explicitly `tabindex="0"` (see
   `src/core/slider.ts` — this was made explicit after finding that

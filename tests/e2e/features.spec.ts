@@ -36,14 +36,7 @@ test('freeScroll disables CSS scroll-snap on the track', async ({ page }) => {
   expect(snapType).toBe('none');
 });
 
-test('mouse click-and-drag scrolls the track and updates the index', async ({
-  page,
-  browserName,
-}) => {
-  test.skip(
-    browserName === 'webkit',
-    'WebKit CDP mouse events do not set pointerType=mouse reliably in headless runs',
-  );
+test('mouse click-and-drag scrolls the track and updates the index', async ({ page }) => {
   await ready(page, '?mode=finite&narrow=true');
   const track = page.locator('[data-slider-track]');
   const box = await track.boundingBox();

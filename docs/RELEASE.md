@@ -1,100 +1,160 @@
 # Maintainer release checklist
 
-This package has **not** been published. No publish command was run as
-part of this implementation, per the brief's explicit instruction not to
-publish or reserve the name without separate authorization.
+This package has **not** been published. No `npm publish` (or
+`--dry-run` variant that talks to npm as the owner) has been run — that
+step is left to the owner, on the owner's machine, with the owner's npm
+credentials.
 
-## Before publishing
+## Resolved during release preparation
 
-- [ ] **Confirm package-name availability again, immediately before
-      publish** — availability can change between now and then. Use:
-      ```sh
-      npm view csp-safe-slider name version --registry=https://registry.npmjs.org/
-      ```
-      or an exact HTTP check:
-      ```sh
-      curl -s -o /dev/null -w '%{http_code}\n' https://registry.npmjs.org/csp-safe-slider
-      ```
-      A `404`/`E404` is evidence of absence; a timeout, access error, or
-      empty search result is **not** — retry with the exact command above
-      rather than trusting an ambiguous result.
+- [x] **Package name**: `csp-safe-slider`, unscoped, confirmed available.
+      Last checked **2026-09-21 09:04:55 UTC**: HTTP `404`,
+      body `{"error":"Not found"}` from
+      `https://registry.npmjs.org/csp-safe-slider`. **This is stale by the
+      time you read it — recheck immediately before publishing** (see
+      below).
+- [x] **Copyright/ownership for `LICENSE`**: set to "Saurav Kaushik" (2026),
+      taken from this repository's own `git config user.name`/`user.email`
+      and matching commit authorship — not invented.
+- [x] **`package.json` `repository`/`bugs`/`homepage`**: set from the
+      repository's actual `origin` remote
+      (`github.com/dev-saurav61295/csp-safe-slider`).
+- [x] **`author`**: set to "Saurav Kaushik" for the same reason as the
+      license holder above.
+- [x] **`version`**: set to `1.0.0`. All mandatory automated release gates
+      pass with zero skips (119/119 — see
+      [VALIDATION_REPORT.md](VALIDATION_REPORT.md)), the public API
+      surface is intentionally stable, and the previously-open WebKit
+      mouse-drag test gap was closed (it turned out to be a stale
+      assumption from an earlier Playwright/WebKit build combination, not
+      a real product limitation — re-verified passing 3x in a row across
+      all three browsers). The two things still genuinely incomplete —
+      real assistive-technology manual testing and a CI workflow file —
+      are ongoing-practice/process items rather than mandatory behavior
+      gaps in the shipped code, and are called out explicitly below and
+      in `COMPATIBILITY.md`/`ACCESSIBILITY.md` rather than silently
+      assumed done.
+- [x] **`publishConfig`**: `{ "access": "public", "registry":
+"https://registry.npmjs.org/" }` added — defensive metadata for an
+      unscoped package, not strictly required, but explicit.
 
-      Last checked during this implementation session: **2026-09-21
-      07:08:34 UTC**, HTTP `404`, body `{"error":"Not found"}`. This is
-      now stale by the time you read it — recheck.
+## Still open — owner decisions/actions needed
 
-- [ ] **Confirm copyright/ownership for `LICENSE`.** It currently reads
-      "Copyright (c) 2026 csp-safe-slider contributors" as a placeholder —
-      replace with the actual publishing individual/org name before
-      publishing under their identity.
+- [ ] **npm auth**: `npm login` (interactive, 2FA) or an `NPM_TOKEN` for
+      CI. Not performed here — no credentials were touched, requested, or
+      should ever be pasted into an agent session.
+- [ ] **CI**: no `.github/workflows/*.yml` exists yet. Recommended minimum,
+      on your target Node version(s), all in one command:
 
-- [ ] **Confirm `package.json` `repository`/`bugs`/`homepage` fields** — not
-      set in this implementation since no repository host was specified.
-      Add them once the package has a real repository URL; npm and
-      consumers both expect these for a public package.
+  ```sh
+  npm ci && npm run typecheck && npm run lint && npm test && \
+    npm run build && npm run test:browser && npm run test:ssr && npm run test:pack
+  ```
 
-- [ ] **Bump `version`** per semver. `0.1.0` is a placeholder initial
-      version; decide whether the first publish should be `0.1.0`
-      (signals "not yet API-stable," matches the honest "what's deferred"
-      scope in `docs/COMPATIBILITY.md`) or `1.0.0` (signals a stability
-      commitment this session's scope doesn't fully back yet, given
-      deferred items like framework adapters and full manual a11y
-      verification).
+  Add `--provenance` to `npm publish` once this runs in a supported CI
+  environment (e.g. GitHub Actions with OIDC) for supply-chain attestation.
 
-- [ ] **npm auth**: `npm login` / configure an automation token via
-      `NPM_TOKEN` in CI. Not performed here — no credentials were touched
-      or requested during this implementation.
+- [ ] **Real assistive-technology verification**: see the pending
+      checklist in [ACCESSIBILITY.md](ACCESSIBILITY.md#manual-verification-checklist)
+      (VoiceOver, NVDA, TalkBack, real zoomed layouts, real forced-colors
+      mode). Automated `axe-core` scans pass; they don't substitute for
+      this.
+- [ ] **Recheck the package name immediately before publishing** — the
+      check above is already stale. Re-run:
 
-- [ ] **Provenance**: if publishing from CI, add
-      `npm publish --provenance` (requires a supported CI environment like
-      GitHub Actions with OIDC configured) so consumers get npm's
-      supply-chain provenance attestation. Not configured in this
-      repository — no CI workflow file exists yet (see below).
+  ```sh
+  npm view csp-safe-slider name version --registry=https://registry.npmjs.org/
+  ```
 
-- [ ] **CI**: no `.github/workflows/*.yml` was added in this session. Set
-      one up running, at minimum: `npm run typecheck && npm run lint &&
-      npm test && npm run build && npm run test:e2e && npm run test:ssr &&
-      npm run test:pack` on your target Node version(s) before merging to
-      the default branch and before every publish.
+  An `E404` is real evidence of absence. A timeout, auth error, or empty
+  search result is not — retry the exact command rather than trusting an
+  ambiguous result. If the name is now taken and not owned by you,
+  **stop** — do not rename automatically or publish under a different
+  identity without updating every reference (`package.json`, imports,
+  docs, tests, consumer fixtures) consistently first.
 
 ## Pre-publish verification (run these, don't skip)
 
 ```sh
-npm run typecheck
-npm run lint
+npm ci
+npm run lint --if-present
+npm run typecheck --if-present
 npm test
 npm run build
-npm run test:e2e     # requires: npx playwright install (already done in this session's environment)
+npm run test:browser   # requires: npx playwright install chromium firefox webkit (one-time)
 npm run test:ssr
 npm run test:pack
-npm pack --dry-run   # inspect the file list — see below for what to expect
+npm pack --dry-run
 ```
 
-Expected `npm pack --dry-run` contents (verified this session):
-`dist/` (JS, `.d.ts`, `.css`), `README.md`, `LICENSE`, `CHANGELOG.md`, plus
-the auto-included `package.json`. `src/`, `tests/`, `examples/`, `docs/`,
-and config files are excluded via the `files` field in `package.json` —
-verify this list hasn't silently grown to include something unintended
-(e.g. a stray `.env`) before every publish, since `files` allow-listing is
-the actual safety mechanism, not `.npmignore`.
+Expected `npm pack --dry-run` contents (verified during release prep, 12
+files, ~63.1 kB packed / ~259.4 kB unpacked): `dist/` (JS × 2 formats +
+sourcemaps, `.d.ts` × 2, both CSS files), `README.md`, `LICENSE`,
+`CHANGELOG.md`, plus the auto-included `package.json`. `src/`, `tests/`,
+`examples/`, `docs/`, and config files are excluded via the `files`
+allow-list in `package.json` — verify this list hasn't silently grown to
+include something unintended (a stray `.env`, a local log) before every
+publish, since `files` allow-listing is the actual safety mechanism here,
+not `.npmignore` (none exists, by design).
 
-## Publishing
+## Publishing (owner only, on the owner's machine)
 
 ```sh
-npm publish --access public
+PACKAGE_DIR="/absolute/path/to/csp-safe-slider"
+cd "$PACKAGE_DIR"
+
+node --version
+npm --version
+npm config get registry
+
+npm login
+npm whoami
+
+npm pkg get name version private publishConfig
+
+npm ci
+npm run lint --if-present
+npm run typecheck --if-present
+npm test
+npm run build
+
+npm pack --dry-run
+npm publish --dry-run
+
+npm view csp-safe-slider name version --registry=https://registry.npmjs.org/
 ```
 
-This repository intentionally does not run this command. Do not publish a
-placeholder release merely to reserve the name — see the brief's explicit
-instruction against squatting.
+For a first release, that final `npm view` is expected to return `E404` —
+confirm it's a genuine npm `E404`, not a connection or auth failure, then:
+
+```sh
+npm publish --registry=https://registry.npmjs.org/
+```
+
+npm may prompt for a two-factor code — enter it only in that local prompt,
+never share it with anything else, including an agent session.
 
 ## Post-publish
 
-- [ ] Tag the release in git (`git tag vX.Y.Z && git push --tags`) — only
-      after confirming with whoever owns push access; this session did not
-      push or tag anything.
-- [ ] Update `CHANGELOG.md` for the next unreleased section.
-- [ ] Smoke-test the *published* (not local) package in a throwaway
-      project: `npm install csp-safe-slider@latest` and re-run the
-      `test:pack`-style checks against the real registry tarball, not just
-      the local one.
+```sh
+npm view csp-safe-slider name version dist-tags.latest \
+  --registry=https://registry.npmjs.org/
+
+npm install csp-safe-slider
+```
+
+- [ ] Confirm the public page: `https://www.npmjs.com/package/csp-safe-slider`
+- [ ] Tag the release: `git tag v1.0.0 && git push --tags` — only after
+      confirming with whoever owns push access; this repository has not
+      tagged or pushed a release tag.
+- [ ] Add a new `## [Unreleased]` section to `CHANGELOG.md` for the next
+      round of changes.
+- [ ] Re-run the `test:pack`-style checks against the real registry
+      tarball (`npm install csp-safe-slider@latest` in a throwaway
+      project), not just the local `.tgz`, since the registry tarball is
+      what consumers actually get.
+
+If npm says the name is unavailable or you lack permission, **stop**. Do
+not retry with a different package name until every reference —
+`package.json`, imports, examples, documentation, tests, and consumer
+fixtures — has been updated consistently for the replacement name first.

@@ -8,9 +8,11 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
-npm run build >/dev/null
-
-TARBALL="$(npm pack --silent)"
+# `npm pack` runs the `prepack` lifecycle script (which builds) itself, so
+# we don't need to build separately here — doing so would just make the
+# build run twice. `prepack`'s own stdout is interleaved with npm's, so we
+# take only the last line, which is npm's actual tarball filename output.
+TARBALL="$(npm pack --silent | tail -n1)"
 TARBALL_PATH="$ROOT/$TARBALL"
 echo "Packed: $TARBALL"
 
