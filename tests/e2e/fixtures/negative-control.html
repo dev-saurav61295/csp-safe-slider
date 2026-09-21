@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>csp-safe-slider — negative control (expected to violate)</title>
+  </head>
+  <body>
+    <!--
+      This classic (non-module, non-async, non-defer) script blocks HTML
+      parsing until it runs, guaranteeing the securitypolicyviolation
+      listener is attached before the parser reaches the offending
+      attributes below — regardless of exactly when the browser fires the
+      violation for an inline style/handler attribute.
+    -->
+    <script src="csp-monitor.js"></script>
+    <!-- Intentional forbidden inline style: must be blocked by style-src-attr 'none'. -->
+    <div id="bad-style" style="color: rgb(255, 0, 0)">inline style</div>
+    <!-- Intentional forbidden inline handler: must be blocked by script-src-attr 'none'. -->
+    <button id="bad-handler" onclick="window.__handlerRan = true">inline handler</button>
+  </body>
+</html>

@@ -1,0 +1,67 @@
+{
+  "name": "csp-safe-slider",
+  "version": "0.1.0",
+  "description": "A CSP-safe, dependency-free content slider/carousel that never writes inline styles, style attributes, or inline event handlers.",
+  "type": "module",
+  "license": "MIT",
+  "keywords": [
+    "slider",
+    "carousel",
+    "csp",
+    "content-security-policy",
+    "accessibility",
+    "typescript"
+  ],
+  "sideEffects": [
+    "*.css"
+  ],
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./styles.css": "./dist/csp-safe-slider.css",
+    "./theme.css": "./dist/theme.css",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "tsup && node scripts/copy-css.mjs",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "playwright test",
+    "test:ssr": "node scripts/verify-ssr.mjs",
+    "test:pack": "bash scripts/verify-pack.sh",
+    "lint": "eslint .",
+    "format": "prettier --check .",
+    "pack:dry": "npm pack --dry-run",
+    "prepublishOnly": "npm run build"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "^4.10.0",
+    "@eslint/js": "^9.9.0",
+    "@playwright/test": "^1.47.0",
+    "@types/node": "^20.14.0",
+    "eslint": "^9.9.0",
+    "typescript-eslint": "^8.3.0",
+    "jsdom": "^24.1.1",
+    "prettier": "^3.3.3",
+    "tsup": "^8.2.4",
+    "typescript": "^5.5.4",
+    "vitest": "^2.0.5"
+  }
+}

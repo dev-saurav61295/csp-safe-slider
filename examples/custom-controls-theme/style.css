@@ -1,0 +1,27 @@
+body {
+  font-family: system-ui, sans-serif;
+  max-width: 40rem;
+  margin: 2rem auto;
+  padding: 0 1rem;
+}
+
+.promo {
+  --slider-control-bg: #1d3557;
+  --slider-control-color: #f1faee;
+  --slider-dot-size: 0.6rem;
+}
+
+.promo .csp-slider__slide {
+  background: #f1faee;
+  border: 1px solid #a8dadc;
+  border-radius: var(--slider-radius, 0.5rem);
+  padding: 2rem;
+  display: flex;
+  align-items: center;
+}
+
+blockquote {
+  margin: 0;
+  font-size: 1.1rem;
+  color: #1d3557;
+}

@@ -1,0 +1,7 @@
+/* Consumer-authored layout override used by a subset of tests: makes three
+   slides visible at once so a drag gesture has a meaningfully large enough
+   snap zone to cross deterministically, regardless of a browser's specific
+   scroll-snap velocity/threshold heuristics. */
+.csp-slider--narrow .csp-slider__slide {
+  --slider-slide-size: 33.333%;
+}

@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>csp-safe-slider — autoplay + custom theme example</title>
+    <link rel="stylesheet" href="../../dist/csp-safe-slider.css" />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <main>
+      <h1>Autoplay with accessible controls</h1>
+      <p>
+        Rotation stops automatically when keyboard focus enters the carousel and stays stopped
+        until the rotation button is pressed again — it does not silently resume on blur.
+      </p>
+      <div id="testimonials" class="csp-slider promo" aria-label="Customer testimonials">
+        <div class="csp-slider__track" data-slider-track>
+          <div class="csp-slider__slide" data-slider-slide>
+            <blockquote>“Set it up in an afternoon, CSP audit passed first try.” — A. Ortiz</blockquote>
+          </div>
+          <div class="csp-slider__slide" data-slider-slide>
+            <blockquote>“Finally a carousel that doesn't fight our security team.” — J. Kwon</blockquote>
+          </div>
+          <div class="csp-slider__slide" data-slider-slide>
+            <blockquote>“The reduced-motion behavior just worked out of the box.” — R. Patel</blockquote>
+          </div>
+        </div>
+      </div>
+    </main>
+    <script type="module" src="init.js"></script>
+  </body>
+</html>

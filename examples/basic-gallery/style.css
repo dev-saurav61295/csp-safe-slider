@@ -1,0 +1,59 @@
+/*
+ * Bundler CSS-import equivalent of the <link> tags in index.html:
+ *
+ *   import 'csp-safe-slider/styles.css';
+ *   import 'csp-safe-slider/theme.css';
+ *   import './style.css';
+ *
+ * Make sure your bundler is configured to *extract* this to a real .css
+ * file for production (e.g. Vite/webpack's standard CSS extraction), not
+ * inject it via a runtime <style> tag — dev-mode style injection is common
+ * and is itself non-compliant with a strict style-src-elem policy, so audit
+ * your production build output, not your dev server.
+ */
+
+body {
+  font-family: system-ui, sans-serif;
+  max-width: 40rem;
+  margin: 2rem auto;
+  padding: 0 1rem;
+}
+
+.product-gallery {
+  --slider-gap: 1rem;
+  --slider-slide-size: 100%;
+  --slider-control-color: #173f5f;
+}
+
+@media (min-width: 48rem) {
+  .product-gallery {
+    --slider-slide-size: calc((100% - 2 * var(--slider-gap)) / 3);
+  }
+}
+
+.swatch {
+  height: 10rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-weight: 600;
+  border-radius: var(--slider-radius);
+}
+
+.swatch--1 {
+  background: #ef476f;
+}
+.swatch--2 {
+  background: #ffd166;
+  color: #3a3a3a;
+}
+.swatch--3 {
+  background: #06d6a0;
+}
+.swatch--4 {
+  background: #118ab2;
+}
+.swatch--5 {
+  background: #073b4c;
+}

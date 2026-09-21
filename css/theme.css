@@ -1,0 +1,30 @@
+/*
+ * Optional default theme. Import this in addition to csp-safe-slider.css
+ * for a ready-made look; skip it entirely for a fully unstyled/structural
+ * slider that only takes the layout rules above.
+ */
+
+.csp-slider {
+  --slider-control-color: #fff;
+  --slider-control-bg: rgba(15, 23, 42, 0.65);
+  --slider-radius: 0.75rem;
+}
+
+.csp-slider__slide {
+  border-radius: var(--slider-radius);
+  overflow: hidden;
+  background: #f1f5f9;
+}
+
+.csp-slider__arrow {
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  transition: background-color 150ms ease;
+}
+
+.csp-slider__arrow:hover:not(:disabled) {
+  background: rgba(15, 23, 42, 0.85);
+}
+
+.csp-slider__dot {
+  color: #0f172a;
+}

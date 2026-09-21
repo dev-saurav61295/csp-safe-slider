@@ -1,0 +1,24 @@
+body {
+  font-family: system-ui, sans-serif;
+  max-width: 40rem;
+  margin: 2rem auto;
+  padding: 0 1rem;
+}
+
+section {
+  margin-bottom: 2rem;
+}
+
+.demo-slider .csp-slider__slide {
+  height: 6rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #e9ecef;
+  border-radius: var(--slider-radius, 0.5rem);
+  font-size: 1.5rem;
+}
+
+.demo-slider--vertical .csp-slider__track {
+  height: 8rem;
+}

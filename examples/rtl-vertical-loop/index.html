@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>csp-safe-slider — RTL, vertical, and seamless loop</title>
+    <link rel="stylesheet" href="../../dist/csp-safe-slider.css" />
+    <link rel="stylesheet" href="../../dist/theme.css" />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <main>
+      <h1>Three independent instances on one page</h1>
+
+      <section>
+        <h2>RTL (Arabic-style reading order)</h2>
+        <div id="rtl-slider" class="csp-slider demo-slider" dir="rtl" aria-label="مثال من اليمين لليسار">
+          <div class="csp-slider__track" data-slider-track>
+            <div class="csp-slider__slide" data-slider-slide>1</div>
+            <div class="csp-slider__slide" data-slider-slide>2</div>
+            <div class="csp-slider__slide" data-slider-slide>3</div>
+            <div class="csp-slider__slide" data-slider-slide>4</div>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <h2>Vertical axis</h2>
+        <div id="vertical-slider" class="csp-slider demo-slider demo-slider--vertical" aria-label="Vertical example">
+          <div class="csp-slider__track" data-slider-track>
+            <div class="csp-slider__slide" data-slider-slide>A</div>
+            <div class="csp-slider__slide" data-slider-slide>B</div>
+            <div class="csp-slider__slide" data-slider-slide>C</div>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <h2>Seamless loop</h2>
+        <div id="loop-slider" class="csp-slider demo-slider" aria-label="Seamless loop example">
+          <div class="csp-slider__track" data-slider-track>
+            <div class="csp-slider__slide" data-slider-slide>Loop 1</div>
+            <div class="csp-slider__slide" data-slider-slide>Loop 2</div>
+            <div class="csp-slider__slide" data-slider-slide>Loop 3</div>
+          </div>
+        </div>
+      </section>
+    </main>
+    <script type="module" src="init.js"></script>
+  </body>
+</html>

@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>csp-safe-slider — basic gallery example</title>
+
+    <!--
+      Explicit external <link> setup. If you'd rather import the CSS from
+      your bundler (e.g. `import 'csp-safe-slider/styles.css'`), see the
+      comment in style.css — the same file works either way as long as your
+      bundler *extracts* CSS to a file for production rather than injecting
+      a <style> tag at runtime (most dev servers do the latter by default,
+      which itself is a CSP-noncompliant behavior you should disable for
+      any CSP-audited build, not just this package).
+    -->
+    <link rel="stylesheet" href="../../dist/csp-safe-slider.css" />
+    <link rel="stylesheet" href="../../dist/theme.css" />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <main>
+      <h1>Basic gallery</h1>
+      <div id="gallery" class="csp-slider product-gallery" aria-label="Featured products">
+        <div class="csp-slider__track" data-slider-track>
+          <div class="csp-slider__slide" data-slider-slide>
+            <div class="swatch swatch--1">Product A</div>
+          </div>
+          <div class="csp-slider__slide" data-slider-slide>
+            <div class="swatch swatch--2">Product B</div>
+          </div>
+          <div class="csp-slider__slide" data-slider-slide>
+            <div class="swatch swatch--3">Product C</div>
+          </div>
+          <div class="csp-slider__slide" data-slider-slide>
+            <div class="swatch swatch--4">Product D</div>
+          </div>
+          <div class="csp-slider__slide" data-slider-slide>
+            <div class="swatch swatch--5">Product E</div>
+          </div>
+        </div>
+      </div>
+    </main>
+    <script type="module" src="init.js"></script>
+  </body>
+</html>

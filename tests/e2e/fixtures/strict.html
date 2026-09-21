@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>csp-safe-slider — strict CSP fixture</title>
+    <link rel="stylesheet" href="/dist/csp-safe-slider.css" />
+    <link rel="stylesheet" href="/dist/theme.css" />
+    <link rel="stylesheet" href="strict.css" />
+  </head>
+  <body>
+    <main>
+      <h1>Strict CSP fixture</h1>
+      <div id="slider" class="csp-slider" aria-label="Product gallery">
+        <div class="csp-slider__track" data-slider-track>
+          <div class="csp-slider__slide" data-slider-slide id="slide-1">Slide 1</div>
+          <div class="csp-slider__slide" data-slider-slide id="slide-2">Slide 2</div>
+          <div class="csp-slider__slide" data-slider-slide id="slide-3">
+            Slide 3
+            <a href="#slide-3-link" id="in-slide-link">In-slide link</a>
+          </div>
+          <div class="csp-slider__slide" data-slider-slide id="slide-4">Slide 4</div>
+          <div class="csp-slider__slide" data-slider-slide id="slide-5">Slide 5</div>
+        </div>
+      </div>
+    </main>
+    <script type="module" src="csp-monitor.js"></script>
+    <script type="module" src="strict.init.js"></script>
+  </body>
+</html>

@@ -1,0 +1,198 @@
+/*
+ * csp-safe-slider structural stylesheet.
+ *
+ * This file is the entire layout/theme surface: JavaScript never writes
+ * `style`, so every dimension, color, and spacing value a consumer wants to
+ * change is a custom property here (or an override in the consumer's own
+ * external stylesheet). JS only toggles classes and data-attributes.
+ */
+
+.csp-slider {
+  --slider-gap: 1rem;
+  --slider-slide-size: 100%;
+  --slider-control-color: currentColor;
+  --slider-control-bg: rgba(0, 0, 0, 0.55);
+  --slider-control-size: 2.75rem;
+  --slider-dot-size: 0.5rem;
+  --slider-duration: 400ms;
+  --slider-radius: 0.5rem;
+
+  position: relative;
+  display: block;
+}
+
+.csp-slider__track {
+  display: flex;
+  overflow-x: auto;
+  overflow-y: hidden;
+  gap: var(--slider-gap);
+  scroll-snap-type: x mandatory;
+  scroll-behavior: smooth;
+  scroll-padding-inline-start: 0;
+  overscroll-behavior-x: contain;
+  touch-action: pan-y;
+  /* Hide the native scrollbar while keeping the element natively scrollable
+     and keyboard/AT operable; no inline style involved. */
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.csp-slider__track::-webkit-scrollbar {
+  display: none;
+}
+
+.csp-slider__track[data-slider-axis='vertical'] {
+  flex-direction: column;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scroll-snap-type: y mandatory;
+  touch-action: pan-x;
+}
+
+.csp-slider__track--free {
+  scroll-snap-type: none;
+}
+
+.csp-slider__track--dragging {
+  scroll-snap-type: none;
+  scroll-behavior: auto;
+  cursor: grabbing;
+  user-select: none;
+}
+
+.csp-slider__slide {
+  flex: 0 0 var(--slider-slide-size);
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
+  min-width: 0;
+}
+
+.csp-slider__track[data-slider-axis='vertical'] .csp-slider__slide {
+  scroll-snap-align: start;
+}
+
+/* Fade effect: slides stack in one grid cell instead of scrolling. */
+.csp-slider__track[data-slider-effect='fade'] {
+  display: grid;
+  overflow: hidden;
+  scroll-snap-type: none;
+}
+
+.csp-slider__track[data-slider-effect='fade'] .csp-slider__slide {
+  grid-area: 1 / 1;
+  opacity: 0;
+  transition: opacity var(--slider-duration) ease;
+  pointer-events: none;
+}
+
+.csp-slider__track[data-slider-effect='fade'] .csp-slider__slide[data-state='active'] {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* Clones must never be visible to sighted users as duplicate content when
+   layout briefly overflows during resize; they carry `inert` at runtime,
+   this is a defensive visual backstop only. */
+[data-slider-clone] {
+  scroll-snap-align: start;
+}
+
+.csp-slider__controls {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+.csp-slider__arrow {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--slider-control-size);
+  height: var(--slider-control-size);
+  border-radius: 999px;
+  border: none;
+  background: var(--slider-control-bg);
+  color: var(--slider-control-color);
+  cursor: pointer;
+}
+
+.csp-slider__arrow:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.csp-slider__arrow--prev::before {
+  content: '\2039';
+}
+
+.csp-slider__arrow--next::before {
+  content: '\203A';
+}
+
+.csp-slider__dots {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex: 1;
+  justify-content: center;
+}
+
+.csp-slider__dot {
+  width: var(--slider-dot-size);
+  height: var(--slider-dot-size);
+  border-radius: 999px;
+  border: none;
+  padding: 0;
+  background: currentColor;
+  opacity: 0.35;
+  cursor: pointer;
+}
+
+.csp-slider__dot--active {
+  opacity: 1;
+}
+
+.csp-slider__rotation {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.csp-slider__fraction {
+  font-variant-numeric: tabular-nums;
+  font-size: 0.85rem;
+}
+
+.csp-slider__progress {
+  width: 100%;
+  height: 3px;
+  border: none;
+}
+
+/* Focus visibility for keyboard users; never removed, only restyled. */
+.csp-slider__track:focus-visible,
+.csp-slider__arrow:focus-visible,
+.csp-slider__dot:focus-visible,
+.csp-slider__rotation:focus-visible {
+  outline: 2px solid Highlight;
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .csp-slider__track {
+    scroll-behavior: auto;
+  }
+  .csp-slider__track[data-slider-effect='fade'] .csp-slider__slide {
+    transition: none;
+  }
+}
+
+@media (forced-colors: active) {
+  .csp-slider__arrow,
+  .csp-slider__dot {
+    forced-color-adjust: none;
+    border: 1px solid ButtonText;
+  }
+}
