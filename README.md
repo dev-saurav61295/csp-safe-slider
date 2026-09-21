@@ -104,6 +104,7 @@ against and the negative-control fixture that proves enforcement is real.
 - [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md) — feature combination matrix, known limitations
 - [docs/VALIDATION_REPORT.md](docs/VALIDATION_REPORT.md) — what was actually run, on what versions, with what results
 - [docs/RELEASE.md](docs/RELEASE.md) — maintainer publish checklist
+- [SECURITY.md](SECURITY.md) — supported versions, how to report a vulnerability
 - [examples/](examples/) — runnable strict-CSP example pages
 
 ## Examples
@@ -173,11 +174,11 @@ by themselves establish full conformance.
 ## Support and security reports
 
 This is an independent open-source project, not affiliated with any
-company or npm organization. Report bugs, feature requests, and security
-concerns via [GitHub Issues](https://github.com/dev-saurav61295/csp-safe-slider/issues).
-For a suspected security issue specifically, please avoid filing a public
-issue with exploit details before a fix is available — open an issue
-asking for a private contact instead.
+company or npm organization. Report bugs and feature requests via
+[GitHub Issues](https://github.com/dev-saurav61295/csp-safe-slider/issues).
+For a suspected security issue specifically, see [SECURITY.md](SECURITY.md) —
+please avoid filing a public issue with exploit details before a fix is
+available.
 
 ## License
 

@@ -246,9 +246,10 @@ React/Vue/Angular adapter packages (illustrative snippets only), a
 built-in thumbnail-sync helper (composable manually via the existing
 public API), a build-time CSS preset generator (the custom-property
 contract covers the same use case by hand), virtualization, grid/multi-row
-layouts, parallax/3D, zoom/lightbox, history/deep-linking, a CI workflow
-file, and real assistive-technology manual verification (tracked as a
-pending checklist, not assumed).
+layouts, parallax/3D, zoom/lightbox, history/deep-linking, and real
+assistive-technology manual verification (tracked as a pending checklist,
+not assumed). A CI workflow (`.github/workflows/ci.yml`) has since been
+added post-release and is no longer deferred.
 
 **Not run, marked as such rather than PASS**: real VoiceOver/NVDA/TalkBack
 testing; real Safari (non-headless) mouse-drag verification; any browser

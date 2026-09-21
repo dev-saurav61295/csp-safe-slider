@@ -28,12 +28,18 @@ credentials.
       mouse-drag test gap was closed (it turned out to be a stale
       assumption from an earlier Playwright/WebKit build combination, not
       a real product limitation — re-verified passing 3x in a row across
-      all three browsers). The two things still genuinely incomplete —
-      real assistive-technology manual testing and a CI workflow file —
-      are ongoing-practice/process items rather than mandatory behavior
-      gaps in the shipped code, and are called out explicitly below and
-      in `COMPATIBILITY.md`/`ACCESSIBILITY.md` rather than silently
-      assumed done.
+      all three browsers). The one thing still genuinely incomplete —
+      real assistive-technology manual testing — is an ongoing-practice
+      item rather than a mandatory behavior gap in the shipped code, and
+      is called out explicitly below and in
+      `COMPATIBILITY.md`/`ACCESSIBILITY.md` rather than silently assumed
+      done.
+- [x] **CI**: `.github/workflows/ci.yml` runs install → lint → typecheck
+      → unit tests → build on every push/PR to `main` (matrixed across
+      Node 18.x/20.x/22.x), then verifies the built package once (Node
+      20.x) via the full Playwright suite (Chromium, Firefox, WebKit,
+      including CSP tests) and separately via SSR-import and
+      packed-tarball verification. It never publishes anything.
 - [x] **`publishConfig`**: `{ "access": "public", "registry":
 "https://registry.npmjs.org/" }` added — defensive metadata for an
       unscoped package, not strictly required, but explicit.
@@ -43,16 +49,10 @@ credentials.
 - [ ] **npm auth**: `npm login` (interactive, 2FA) or an `NPM_TOKEN` for
       CI. Not performed here — no credentials were touched, requested, or
       should ever be pasted into an agent session.
-- [ ] **CI**: no `.github/workflows/*.yml` exists yet. Recommended minimum,
-      on your target Node version(s), all in one command:
-
-  ```sh
-  npm ci && npm run typecheck && npm run lint && npm test && \
-    npm run build && npm run test:browser && npm run test:ssr && npm run test:pack
-  ```
-
-  Add `--provenance` to `npm publish` once this runs in a supported CI
-  environment (e.g. GitHub Actions with OIDC) for supply-chain attestation.
+- [ ] **`--provenance` for `npm publish`**: add it once publishing runs
+      inside the `.github/workflows/ci.yml` GitHub Actions environment
+      with OIDC, for supply-chain attestation. Not required for a manual
+      publish from the owner's machine.
 
 - [ ] **Real assistive-technology verification**: see the pending
       checklist in [ACCESSIBILITY.md](ACCESSIBILITY.md#manual-verification-checklist)
