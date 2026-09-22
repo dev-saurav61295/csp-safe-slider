@@ -1,6 +1,11 @@
-import { FOCUSABLE_SELECTOR } from './dom.js';
+import { applyTrackClassTemporarily, clearTrackTemporaryClass, FOCUSABLE_SELECTOR } from './dom.js';
 import { currentScrollPos } from './geometry.js';
 import type { Axis } from './types.js';
+
+export const CORRECTING_CLASS = 'csp-slider__track--correcting';
+
+/** Native form controls whose presence in a clone could duplicate a submission. */
+const FORM_CONTROL_SELECTOR = 'input, select, textarea, button';
 
 /**
  * Seamless loop via DOM clones. Real slides keep their identity, ids, and
@@ -97,10 +102,42 @@ export class LoopEngine {
     // focus order, hit testing for a11y tree, and find-in-page.
     (clone as HTMLElement & { inert: boolean }).inert = true;
     clone.querySelectorAll('[id]').forEach((node) => node.removeAttribute('id'));
+
     clone.querySelectorAll(FOCUSABLE_SELECTOR).forEach((node) => {
       node.setAttribute('tabindex', '-1');
     });
+    // The slide root itself can be the focusable element (an `<a>` or
+    // `<button>` used directly as `[data-slider-slide]`, or a root with an
+    // author-set `tabindex`) — `querySelectorAll` above only ever finds
+    // *descendants*, so it never neutralizes this case on its own.
+    if (clone.matches(FOCUSABLE_SELECTOR)) {
+      clone.setAttribute('tabindex', '-1');
+    }
+
+    this.neutralizeFormControls(clone);
     return clone;
+  }
+
+  /**
+   * `inert` removes a clone from the accessibility tree and focus order,
+   * but it has no effect on HTML form submission: an `inert` control with a
+   * `name` is still a "successful control" per the forms spec, so an
+   * uncorrected loop clone would submit duplicate values alongside the real
+   * slide it was cloned from. Stripping `name` (so it isn't a successful
+   * control at all) and disabling every native form control (belt-and-
+   * braces, and it also drops the clone from the tab order without relying
+   * solely on `inert`) closes that gap without ever touching `style` or
+   * form-submission APIs directly.
+   */
+  private neutralizeFormControls(clone: HTMLElement): void {
+    if (clone.hasAttribute('name')) clone.removeAttribute('name');
+    clone.querySelectorAll('[name]').forEach((node) => node.removeAttribute('name'));
+
+    const disable = (el: Element): void => {
+      if ('disabled' in el) (el as HTMLInputElement).disabled = true;
+    };
+    if (clone.matches(FORM_CONTROL_SELECTOR)) disable(clone);
+    clone.querySelectorAll(FORM_CONTROL_SELECTOR).forEach(disable);
   }
 
   private measureRealBlockSize(): number {
@@ -119,35 +156,52 @@ export class LoopEngine {
    * identical to what they stand in for.
    */
   correctBoundary(): void {
-    if (!this.isActive || this.realBlockSize <= 0) return;
+    if (!this.isActive || this.realBlockSize === 0) return;
     const first = this.realSlides[0];
     const last = this.realSlides[this.realSlides.length - 1];
     if (!first || !last) return;
 
-    let pos = currentScrollPos(this.track, this.axis);
+    const pos = currentScrollPos(this.track, this.axis);
 
-    // No RTL-specific handling needed: `offsetLeft` (used for `realStart`)
-    // and `scrollLeft`/`scrollTop` (used for `pos`) are already in the same
-    // coordinate space regardless of direction — see the note on
-    // `targetScrollFor()` in geometry.ts for why an earlier version's extra
-    // RTL shift here was wrong.
+    // `offsetLeft` (used for `realStart`) and `scrollLeft`/`scrollTop`
+    // (used for `pos`) are in the same coordinate space regardless of
+    // direction — see the note on `targetScrollFor()` in geometry.ts.
+    // What *does* depend on direction is which way is "forward" through
+    // that space: in a `direction: ltr` flex container, DOM order and
+    // offset both increase together, so `headSlides[0]` (last in DOM) sits
+    // at a *larger* offset than the real block and `realBlockSize` is
+    // positive; in `rtl`, DOM order and offset move in *opposite*
+    // directions (per the same geometry.ts note), so `headSlides[0]` sits
+    // at a *smaller* (more negative) offset and `realBlockSize` is
+    // negative. An earlier version of this method compared `pos` against
+    // `realStart`/`realEnd` assuming `realEnd > realStart`, which only
+    // holds for the positive (ltr) case — in rtl it silently never
+    // corrected at all (`realBlockSize <= 0` even bailed out above before
+    // reaching the comparison). Scaling every comparison by
+    // `Math.sign(realBlockSize)` keeps both checks correct in either
+    // direction instead of only ltr.
     const realStart = this.axis === 'horizontal' ? first.offsetLeft : first.offsetTop;
+    const realEnd = realStart + this.realBlockSize;
+    const forward = Math.sign(this.realBlockSize);
+
+    // > 0 once `pos` has drifted forward-of-start into tail-clone
+    // territory; by construction `pos === realStart` is still real
+    // territory, so the threshold is exclusive there.
+    const beforeStart = (realStart - pos) * forward;
     // By construction `realEnd` is exactly `headSlides[0]`'s start edge —
     // i.e. the position a seamless single-step forward wrap actually lands
-    // on. The boundary check below must therefore treat `pos === realEnd`
-    // as *already in clone territory* (an exclusive `>` here would only
-    // catch overshoot past that exact pixel, which some browsers'
-    // scroll-snap landed on by sub-pixel rounding and others — observed in
+    // on. `pos === realEnd` must therefore already count as clone
+    // territory (an exclusive strict-inequality-only threshold here would
+    // only catch overshoot past that exact pixel, which some browsers'
+    // scroll-snap lands on by sub-pixel rounding and others — observed in
     // WebKit — do not, silently skipping correction and leaving the index
     // tracker to read the wrong nearest *real* slide instead).
-    const realEnd = realStart + this.realBlockSize;
+    const pastEnd = (pos - realEnd) * forward;
 
-    if (pos <= realStart - 1) {
-      pos += this.realBlockSize;
-      this.jumpTo(pos);
-    } else if (pos >= realEnd - 1) {
-      pos -= this.realBlockSize;
-      this.jumpTo(pos);
+    if (beforeStart >= 1) {
+      this.jumpTo(pos + this.realBlockSize);
+    } else if (pastEnd >= -1) {
+      this.jumpTo(pos - this.realBlockSize);
     }
   }
 
@@ -159,21 +213,22 @@ export class LoopEngine {
     // had just settled on — even though the corrected position is itself
     // a valid, equally snap-aligned real slide. Suspending snapping for
     // one paint around the write (same class the drag controller uses)
-    // avoids that race without needing any inline style.
-    this.track.classList.add('csp-slider__track--correcting');
+    // avoids that race without needing any inline style. The class is
+    // applied/cleaned up through a shared helper (also used for immediate
+    // `goTo(..., { animate: false })` scrolls) that cancels any previous
+    // pending cleanup on this track first, so a stale callback from an
+    // earlier or destroyed correction can never remove a class a newer one
+    // still depends on.
+    applyTrackClassTemporarily(this.track, CORRECTING_CLASS);
     if (this.axis === 'horizontal') {
       this.track.scrollLeft = pos;
     } else {
       this.track.scrollTop = pos;
     }
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        this.track.classList.remove('csp-slider__track--correcting');
-      });
-    });
   }
 
   teardown(): void {
+    clearTrackTemporaryClass(this.track, CORRECTING_CLASS);
     for (const clone of [...this.headClones, ...this.tailClones]) {
       clone.remove();
     }

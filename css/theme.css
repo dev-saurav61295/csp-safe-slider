@@ -14,6 +14,13 @@
   border-radius: var(--slider-radius);
   overflow: hidden;
   background: #f1f5f9;
+  /* Explicit, not just inherited: a consumer page with a dark-mode global
+     text color would otherwise pair light text with this light slide
+     background, an insufficient-contrast combination surfaced by axe once
+     a slide's content is plain text with no color of its own (e.g. a
+     slide root used directly as a link/button, or in an engine whose
+     default `color: CanvasText` resolves differently). */
+  color: #0f172a;
 }
 
 .csp-slider__arrow {

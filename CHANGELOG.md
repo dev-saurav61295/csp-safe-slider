@@ -5,6 +5,90 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.1.1] — 2026-09-22
+
+Follow-up patch addressing lifecycle, accessibility, form-safety,
+reduced-motion, and autoplay/loop-teardown defects found in a review of
+the `1.1.0` implementation. See
+[docs/VALIDATION_REPORT.md](docs/VALIDATION_REPORT.md#111-validation)
+for root cause, files changed, and regression evidence on every item
+below.
+
+### Fixed
+
+- **Loop clones could duplicate form submissions.** `inert` excludes a
+  clone from the accessibility tree and focus order, but not from HTML
+  form submission — a `name`d, `inert` control is still a "successful
+  control." Every clone now also has every `name` attribute stripped (on
+  the clone root and every descendant) and every native form control
+  disabled, so `FormData` contains each real control exactly once
+  regardless of `mode: 'loop'`. Real controls are untouched.
+- **`destroy()` left almost everything behind.** It removed listeners,
+  controls, observers, and loop clones, but not the `role`,
+  `aria-roledescription`, `aria-label`, `data-slider-*`, `data-state`,
+  `aria-hidden`, `tabindex`, `aria-live`, or active-slide class this
+  package had applied to the root, track, or slides — most harmful for a
+  fade slider, where stale effect/state attributes could leave slides
+  visually or semantically hidden after teardown. `destroy()` now restores
+  everything it changed on the root, track, and every slide it has ever
+  managed (including slides added later via `refresh()`, and one detached
+  from the DOM before `destroy()` runs), without ever replacing a real
+  slide DOM node, and without clobbering an attribute a consumer
+  deliberately overwrote after init.
+- **`animate: false` was not actually immediate.** `scrollTo({ behavior:
+'auto' })` is not on its own a guarantee of an instant jump — the CSSOM
+  View spec permits a UA to still defer to the computed `scroll-behavior`,
+  which stays `smooth` on the structural CSS. Every non-animated scroll
+  (`goTo`, initial `startIndex`, `refresh()`/`update()`/resize
+  realignment) now applies an external track class that forces
+  `scroll-behavior: auto` for the duration of the jump, consolidated with
+  the loop engine's own boundary-correction mechanism.
+- **A previously-masked RTL loop boundary-correction bug**, surfaced only
+  once the fix above made scrolling genuinely instant:
+  `LoopEngine.correctBoundary()` assumed a positive `realBlockSize` (true
+  in `ltr`, but `realBlockSize` is negative in `rtl` — see
+  [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#seamless-loop-measured-clones-not-assumed-geometry)),
+  so it silently never corrected RTL loop wraps at all. The old, still-
+  animated "immediate" scroll had accidentally masked this by letting the
+  browser's own smooth-scroll-plus-snap coordination land on a valid
+  position by itself.
+- **Fade-mode and loop-clone neutralization missed a focusable slide
+  root.** Both scanned only `slide.querySelectorAll(...)`, which never
+  matches the slide element itself — a slide such as `<a href="..."
+data-slider-slide>` or a root with an author `tabindex` stayed
+  keyboard-focusable while inactive/hidden or cloned. Both now also check
+  and neutralize the slide root itself, restoring its exact original
+  `tabindex` on activation/`destroy()`.
+- **Reduced-motion was read once at init and permanently erased the
+  configured `autoplay` option.** `prefers-reduced-motion` is now watched
+  live; a runtime change to `reduce` stops active autoplay immediately,
+  and switching back to `no-preference` never silently resumes it — an
+  explicit `play()` is always required. The configured `autoplay` option
+  itself is never mutated, so `update({ reducedMotion: false })` can make
+  it available again immediately.
+- **Autoplay could report itself as running after `destroy()`.**
+  `AutoplayController.detach()` cleared the timer and listeners but not
+  its own `running`/suspension state, and a queued `IntersectionObserver`
+  callback could still call `reconcile()` after `disconnect()`. Teardown
+  is now final: `detach()` resets all internal state, and every path back
+  into scheduling a timer checks the controller is still attached first.
+- **Loop-correction animation-frame callbacks could outlive their
+  instance.** `teardown()` removed clones but never cancelled the
+  in-flight `requestAnimationFrame` pair scheduled to remove the
+  `--correcting` class, so a stale callback from a destroyed or rebuilt
+  instance could later interfere with a newer correction. Cleanup is now
+  identity-tracked and cancelled outright in `teardown()`.
+
+### Changed
+
+- `docs/API.md#destroy` documents exactly what is now restored.
+- `docs/ACCESSIBILITY.md#reduced-motion` documents the live-subscription
+  semantics in full.
+- `css/theme.css` gives `.csp-slider__slide` an explicit text `color`
+  (previously relied on inherited/UA default), avoiding an
+  insufficient-contrast pairing against its light default background on a
+  page with a different global text color.
+
 ## [1.1.0] — 2026-09-21
 
 Corrects defects found by a static review of the published `1.0.1`

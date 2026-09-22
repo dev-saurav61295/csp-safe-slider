@@ -1,12 +1,199 @@
 # Validation report
 
-This report documents the release-candidate work done in **this** session,
-correcting defects found by a static review of the **published npm 1.0.1
-artifact**. It supersedes the previous report's PASS claims — those covered
-the 1.0.0 release before these defects were found, and are not carried
-forward as evidence here. Everything below was actually run in this
-session on 2026-09-21, on macOS (Darwin 25.6.0, arm64), Node v20.12.2 /
-npm 10.9.0. Nothing here is projected or assumed passing.
+## 1.1.1 validation
+
+This section documents the `1.1.1` patch release work, addressing
+lifecycle, accessibility, form-safety, reduced-motion, and autoplay/
+loop-teardown defects found in a review of the `1.1.0` implementation. It
+does **not** supersede or retroactively apply to the `1.1.0` record below
+— that section describes what was true and tested for `1.1.0`
+specifically, and is left unmodified. Everything in this section was
+actually run in this session on 2026-09-22, on macOS (Darwin 25.6.0,
+arm64), Node v20.12.2 / npm 10.9.0. Nothing here is projected or assumed
+passing.
+
+### Tool versions (this session)
+
+| Tool                 | Version                              |
+| -------------------- | ------------------------------------ |
+| TypeScript           | 5.9.3                                |
+| tsup                 | 8.5.1                                |
+| vitest               | 2.1.9                                |
+| @playwright/test     | 1.63.0                               |
+| Playwright Chromium  | Chrome for Testing 153.0.8010.12     |
+| Playwright Firefox   | 155.0                                |
+| Playwright WebKit    | 26.6                                 |
+| @axe-core/playwright | 4.13.0                               |
+| eslint               | 9.39.5 with typescript-eslint 8.70.0 |
+
+Identical to the 1.1.0 session's tool versions (same environment).
+
+### Finding-to-fix table
+
+Each item below was independently confirmed by reading the current source
+before any fix (not assumed from the request description alone), then
+fixed, then covered by a new regression test.
+
+| #   | Finding                                                              | Confirmed root cause                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | Fix                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | Files changed                                                                          | Regression evidence                                                                                                                                                                                                                                                                                                                                         |
+| --- | -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Loop clones could duplicate form submissions                         | `LoopEngine.cloneNeutralized()` applied `inert`/`aria-hidden`/tabindex but never touched `name` or `disabled` — `inert` doesn't exclude a control from `FormData`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | Every clone strips `name` (root + descendants) and disables every native form control (`input`/`select`/`textarea`/`button`).                                                                                                                                                                                                                                                                                                                                                       | `src/core/loop.ts`                                                                     | `tests/e2e/form-safety.spec.ts` (6 tests): `FormData` contains each control exactly once, no clone-originated values, clone controls disabled and unfocusable, real controls' name/value/checked/disabled untouched, CSP-clean.                                                                                                                             |
+| 2   | `destroy()` left almost every library-applied attribute/class behind | Confirmed by reading `destroy()`: it called `restoreAllFocusables()`/`restoreDirection()`/`loopEngine.teardown()`/`controls?.destroy()` and nothing else — `role`, `aria-roledescription`, `aria-label`, `data-slider-*`, `data-state`, `aria-hidden`, track `tabindex`/`aria-live`, and the active-slide class were never reverted.                                                                                                                                                                                                                                                                                                                         | Added a generic ownership-aware tracker (`DomOwnership`, `src/core/attrs.ts`) recording each attribute/class's pre-mutation value on first write; every site that sets one of these now routes through it; `destroy()` calls `restore()` on the root, track, and every slide ever discovered (`managedSlides`, never pruned).                                                                                                                                                       | `src/core/attrs.ts` (new), `src/core/slider.ts`                                        | `tests/e2e/destroy-restore.spec.ts` (7 tests): exact pre-init markup restored, fade `aria-hidden`/focusability/visual-hiding restored, dynamically-added and detached-before-destroy slides cleaned up, idempotent, clean reinit, real-node identity preserved.                                                                                             |
+| 3   | `animate: false` was not actually immediate                          | Confirmed by reading `scrollToIndex()`: it passed `behavior: 'auto'` to `scrollTo()` with no class/attribute override of the track's `scroll-behavior: smooth`, which the CSSOM View spec permits a UA to still defer to.                                                                                                                                                                                                                                                                                                                                                                                                                                    | Added `csp-slider__track--instant` (`scroll-snap-type: none; scroll-behavior: auto`), applied via a shared, cancellable helper (`applyTrackClassTemporarily`/`clearTrackTemporaryClass`, `src/core/dom.ts`) for every non-animated scroll; consolidated with the loop engine's existing `--correcting` mechanism.                                                                                                                                                                   | `src/core/dom.ts`, `src/core/slider.ts`, `src/core/loop.ts`, `css/csp-safe-slider.css` | `tests/e2e/immediate-scroll.spec.ts` (9 tests): synchronous same-task position check (not a final-index wait) for `goTo`, init at nonzero `startIndex`, `refresh()`/`update()`/resize, horizontal/vertical/RTL, plus a contrast test proving `animate: true` still does _not_ jump synchronously.                                                           |
+| 4   | (Discovered fixing #3) RTL loop boundary correction never ran        | `LoopEngine.correctBoundary()` bailed out on `realBlockSize <= 0` and compared `pos` against `realStart`/`realEnd` assuming `realEnd > realStart` — both only hold when `realBlockSize` is positive, which it never is in `direction: rtl` (head clones sit at _more negative_ offsets than the real block there). The old, still-animated "immediate" scroll had masked this by letting the browser's own smooth-scroll+snap coordination land on a valid position regardless. Verified directly by dumping actual clone/real `offsetLeft` values in a throwaway Playwright script before fixing (see PR history), not just inferred from reading the code. | Bailout changed to `=== 0`; every boundary comparison scaled by `Math.sign(realBlockSize)` instead of assuming a fixed positive direction.                                                                                                                                                                                                                                                                                                                                          | `src/core/loop.ts`                                                                     | `tests/e2e/loop.spec.ts` "RTL loop wraps forward and backward" (pre-existing test; failed consistently 5/5 on Firefox against the item-3 fix alone, passed consistently after this fix — confirmed the failure was **not** present against the unmodified 1.1.0 baseline via `git stash`, i.e. a genuinely newly-exposed defect, not a pre-existing flake). |
+| 5   | Fade/loop-clone neutralization missed a focusable slide root         | Both `updateSlideStates()` (fade) and `LoopEngine.cloneNeutralized()` (loop) called `querySelectorAll(...)` only, which never matches the element it's called on — a slide root that is itself `<a href>`/`<button>`/`tabindex`-bearing stayed focusable while inactive/cloned.                                                                                                                                                                                                                                                                                                                                                                              | Added a `slide.matches(FOCUSABLE_SELECTOR[_ALL])` check alongside the descendant scan in both places; the root's original `tabindex` is tracked/restored through the same mechanism as descendants. Also fixed a resulting `aria-allowed-role` violation: `role="group"` is invalid on `<a href>`/`<button>`/native form controls, so `labelSlides()` now skips forcing `role` on a slide root with such a tag (found via axe against the new fixture, not anticipated in advance). | `src/core/slider.ts`, `src/core/loop.ts`                                               | `tests/e2e/focusable-slide-root.spec.ts` (9 tests) across a dedicated fixture with an anchor, button, and `tabindex="0"` div used directly as slide roots; axe scan included in both fade and loop mode.                                                                                                                                                    |
+| 6   | Reduced motion read once at init, erased configured `autoplay`       | Confirmed: `if (reduceMotion && options.reducedMotion) { options = { ...options, autoplay: false } }` ran once during `createSlider()`, permanently discarding the option and never re-evaluating the media query afterward.                                                                                                                                                                                                                                                                                                                                                                                                                                 | `reduceMotionActive()` now queries `matchMedia(...).matches` live on every check (not a cached flag — a cached value updated only from the async `change` event lagged behind synchronous test/preference-flip sequences); a `watchReducedMotion()` subscription proactively stops running autoplay on a runtime flip; `play()` itself is gated on `reduceMotionActive()`; the configured `autoplay` option is never mutated.                                                       | `src/core/dom.ts`, `src/core/slider.ts`                                                | `tests/e2e/reduced-motion.spec.ts` (10 tests): initial suppression, runtime stop, `play()` blocked while active, no silent resume, explicit resume works, immediate navigation during suppression, `update({ reducedMotion })` both directions, listener cleanup on destroy.                                                                                |
+| 7   | Autoplay could report `isAutoplaying: true` after `destroy()`        | Confirmed: `AutoplayController.detach()` cleared the timer/listeners but never reset `running`/suspension flags, and the `IntersectionObserver` callback had no `attached` guard, so a callback already queued at `disconnect()` time could still call `reconcile()` afterward.                                                                                                                                                                                                                                                                                                                                                                              | `detach()` now resets `running` and every suspension flag; `startTimer()` and the `IntersectionObserver` callback both refuse to act unless `attached`.                                                                                                                                                                                                                                                                                                                             | `src/core/autoplay.ts`                                                                 | `tests/e2e/autoplay-teardown.spec.ts` (5 tests): destroy while actively autoplaying, no events/index-changes after destroy, IO-callback-around-destroy race, repeated enable/disable cycles don't duplicate timers, `getState()` after destroy.                                                                                                             |
+| 8   | Loop-correction rAF callbacks could outlive their instance           | Confirmed: `jumpTo()`'s nested `requestAnimationFrame` pair removing `--correcting` had its IDs kept only in local closures, and `teardown()` never cancelled them or removed the class immediately.                                                                                                                                                                                                                                                                                                                                                                                                                                                         | Class apply/cleanup consolidated into a shared, identity-tracked helper (`applyTrackClassTemporarily`/`clearTrackTemporaryClass`) that cancels a previous pending cleanup before scheduling a new one, and `teardown()` calls the cancel-and-remove-immediately path explicitly.                                                                                                                                                                                                    | `src/core/dom.ts`, `src/core/loop.ts`                                                  | `tests/e2e/loop-raf-safety.spec.ts` (5 tests): destroy/axis-change/refresh during a pending correction, destroy-and-immediately-reinit leaves no stale class, repeated mode-toggle build/teardown cycles.                                                                                                                                                   |
+
+### Commands executed
+
+```sh
+npm ci
+npm run clean
+npm run build
+npm run typecheck
+npm run lint
+npm run format
+npm test
+npx playwright install --with-deps
+npm run test:browser
+npm run test:csp
+npm run test:ssr
+npm run test:pack
+npm pack --dry-run
+```
+
+Plus the focused repeat-stability commands requested:
+
+```sh
+npx playwright test tests/e2e/loop.spec.ts --repeat-each=5      # 210/210 PASS, 3 browsers
+npx playwright test tests/e2e/a11y.spec.ts --repeat-each=3      # 135/135 PASS, 3 browsers
+npx playwright test tests/e2e/navigation.spec.ts --repeat-each=3 # 108/108 PASS, 3 browsers
+```
+
+and, since six new dedicated spec files carry this release's regression
+coverage and aren't named in the brief's example list, the same
+repeat-stability check was extended to them:
+
+```sh
+npx playwright test tests/e2e/form-safety.spec.ts tests/e2e/destroy-restore.spec.ts \
+  tests/e2e/focusable-slide-root.spec.ts tests/e2e/immediate-scroll.spec.ts \
+  tests/e2e/reduced-motion.spec.ts tests/e2e/autoplay-teardown.spec.ts \
+  tests/e2e/loop-raf-safety.spec.ts --repeat-each=3              # 450/450 PASS, 3 browsers
+```
+
+### Results
+
+- **`npm ci`**: PASS. Lockfile in sync with `package.json` (both bumped to
+  `1.1.1`); pre-existing `npm audit` findings (5 vulnerabilities in
+  devDependencies — build/lint/test tooling, not shipped runtime code) are
+  unrelated to this session's changes and were not investigated further,
+  consistent with this session's scope.
+- **`npm run typecheck`**: PASS, zero errors.
+- **`npm run lint`**: PASS, zero errors/warnings.
+- **`npm run format`**: PASS on every file touched this session.
+  `SECURITY.md` has the same pre-existing, unrelated Prettier issue noted
+  in the 1.1.0 report — still not modified, still left as-is.
+- **`npm test`** (vitest, unit): PASS, 32/32 — unchanged from 1.1.0; none
+  of this release's fixes touch the pure index/option/event logic these
+  cover.
+- **`npx playwright install --with-deps`**: all three configured browsers
+  (Chromium, Firefox, WebKit) installed successfully in this environment —
+  no browser was unavailable or skipped for installation reasons.
+- **`npm run test:browser`** (`playwright test`, full suite): **PASS,
+  352/360 run, 8 skipped by design, 0 failed**, across Chromium + Firefox +
+  WebKit (14 spec files: the 7 from 1.1.0 plus
+  `form-safety.spec.ts`/`destroy-restore.spec.ts`/
+  `focusable-slide-root.spec.ts`/`immediate-scroll.spec.ts`/
+  `reduced-motion.spec.ts`/`autoplay-teardown.spec.ts`/
+  `loop-raf-safety.spec.ts` added this session). The 8 skips are the same
+  pre-existing, documented Firefox/non-Chromium touch-emulation skips from
+  1.1.0 (`touch.spec.ts`) — unchanged.
+- **`npm run test:csp`**: PASS, 18/18 — zero CSP violations, zero
+  forbidden mutations, negative control still confirms enforcement is
+  live.
+- **`npm run test:ssr`**: PASS — unaffected by this session's changes (no
+  new top-level DOM access).
+- **`npm run test:pack`** and **`npm pack --dry-run`**: PASS. Packed
+  tarball (`csp-safe-slider-1.1.1.tgz`) installs into a clean consumer
+  fixture and resolves `styles.css`/`theme.css`/`index.d.ts` and both
+  `require()`/`import` entry points correctly; 12 files in the tarball,
+  same allow-list as 1.1.0 (`CHANGELOG.md`, `LICENSE`, `README.md`,
+  `package.json`, `dist/*` × 8).
+- **Focused repeat-stability runs**: all PASS as shown above — zero
+  flakes across 5×/3× repeats on the timing-sensitive lifecycle/loop/a11y
+  suites, and 3× repeats on every new dedicated spec file for this
+  release.
+
+### A test-fixing note, in the interest of not silently weakening coverage
+
+Two tests needed adjustment during this session, both because the
+_assertion technique_ itself was unreliable under heavy parallel test
+load, not because the underlying behavior was ever in question once fixed
+independently:
+
+- The initial "`animate: true` produces a progressive multi-frame
+  transition" test sampled `scrollLeft` via an in-page
+  `requestAnimationFrame` loop and asserted on the count of distinct
+  values seen; under `--repeat-each` stress and full-suite parallelism,
+  frame delivery could become sparse enough to catch only 1-2 samples,
+  intermittently failing regardless of whether the scroll actually
+  animated. Replaced with a deterministic, non-timing-dependent check:
+  reading `scrollLeft` synchronously in the same task as the `animate:
+true` call proves it has _not_ yet jumped (unlike the `animate: false`
+  case, which has), which is the actual property this release needs to
+  guarantee stays true — a direct structural contrast rather than a
+  statistical sampling argument.
+- The new focusable-slide-root axe scan in `effect: 'fade'` mode
+  intermittently reported a `color-contrast` violation with a different
+  reported foreground color on each failing run (`#c2c5c8`, `#8c8e90`,
+  `#bbc0c7`) — consistent with axe sampling the actual rendered color
+  mid-way through the fade CSS's `opacity` transition on an inactive
+  slide, not a fixed value. Fixed by waiting for the transition duration
+  (`--slider-duration`, 400ms default) to elapse before scanning, which
+  also surfaced a genuine, separate defect worth fixing regardless: the
+  default theme (`css/theme.css`) never set an explicit slide text
+  `color`, relying on inherited/UA default — a real contrast risk on any
+  host page with a different global text color, now fixed with an
+  explicit `color: #0f172a`.
+
+Neither change loosened what's being asserted; both are documented here
+rather than silently folded into the diff.
+
+### Limitations and honestly-not-covered items
+
+- **Real assistive-technology verification** (VoiceOver, NVDA, TalkBack,
+  Dragon, real forced-colors/zoom) was not performed this session either —
+  unchanged pending status from 1.1.0, tracked in
+  [ACCESSIBILITY.md](ACCESSIBILITY.md#manual-verification-checklist).
+- **The RTL loop-correction fix (finding #4) was empirically derived**
+  from instrumenting actual `offsetLeft` values in a real browser during
+  debugging, then generalized algebraically (`Math.sign`-scaled
+  comparisons) and re-verified against both LTR and RTL test coverage —
+  it was not derivable from the bug report alone, since the request
+  focused on `animate: false` immediacy and did not anticipate this
+  interaction.
+- **The item-6 (`IntersectionObserver` callback after `disconnect()`)
+  regression test cannot force the exact race deterministically** — it
+  maximizes the chance (toggling visibility immediately before `destroy()`)
+  but relies on the guard code being correct by inspection/construction
+  rather than a guaranteed repro, since Playwright has no API to queue an
+  IO callback and pause its dispatch on demand.
+- **Bundle size was not re-measured** in this session's report; the
+  `1.1.0` figures in the "Bundle size" table below predate this session's
+  source changes.
+
+## 1.1.0 validation (historical — unmodified by 1.1.1)
+
+This section documents the release-candidate work done in **that**
+session, correcting defects found by a static review of the **published
+npm 1.0.1 artifact**. It supersedes the report before it — the one
+covering the 1.0.0 release before those defects were found — and is not
+carried forward as evidence for anything beyond 1.1.0. Everything below
+was actually run in that session on 2026-09-21, on macOS (Darwin 25.6.0,
+arm64), Node v20.12.2 / npm 10.9.0. Nothing here is projected or assumed
+passing, and none of it should be read as describing the 1.1.1 fixes
+above.
 
 ## Tool versions (this session)
 

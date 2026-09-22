@@ -192,11 +192,20 @@ boundary modes (including a genuinely seamless clone-based `loop`, RTL and
 vertical included), slide/fade transitions, autoplay with full runtime
 `update()` support, drag/keyboard/native-touch input, RTL/vertical/
 multi-slide/variable-width layout, accessibility fundamentals, and
-packaging are implemented and covered by 32 unit + 210 Playwright tests
-(202 passing, 8 intentionally skipped where a browser lacks the relevant
+packaging are implemented and covered by 32 unit + 360 Playwright tests
+(352 passing, 8 intentionally skipped where a browser lacks the relevant
 touch-emulation capability — see
 [docs/VALIDATION_REPORT.md](docs/VALIDATION_REPORT.md) for exactly which
-and why) across three real browsers plus Node. Virtualization, grid/
+and why) across three real browsers plus Node. **1.1.1** adds: loop clones
+that can no longer duplicate form submissions, a `destroy()` that
+restores essentially everything it changed (not just loop clones/
+listeners/`dir`), a genuinely-immediate `animate: false` (an external
+track class, not just `scrollTo({ behavior: 'auto' })`), focusable
+slide-root handling (a slide root that's itself an `<a>`/`<button>`/
+`tabindex` element, not just a focusable descendant), a live
+`prefers-reduced-motion` subscription instead of a read-once flag, and
+hardened autoplay/loop-engine teardown — see
+[CHANGELOG.md](CHANGELOG.md) for the full list. Virtualization, grid/
 multi-row layouts, parallax/zoom, deep-linking, and tested framework
 adapter packages are explicitly out of scope for this release — see
 [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md) for the full

@@ -64,7 +64,59 @@ slides. See `src/core/loop.ts`.
 Clones are neutralized so they can't be mistaken for real, interactive
 content: `aria-hidden="true"`, the `inert` IDL property (a DOM property,
 not a style), stripped `id` attributes (to avoid duplicate IDs), and
-`tabindex="-1"` on any focusable descendant.
+`tabindex="-1"` on any focusable content — including the clone's own root
+element, when the slide root itself is the focusable thing (e.g. an
+`<a>`/`<button>` used directly as `[data-slider-slide]`), not just its
+descendants.
+
+## Loop clones cannot duplicate form submissions
+
+`inert` removes a clone from the accessibility tree, hit testing, and
+focus order — but it has no effect on HTML form submission. A `name`d,
+`inert` control is still a "successful control" per the forms spec, so
+`inert` alone would let each real slide's form controls submit once per
+clone in addition to once for the real slide (with 2 real slides in
+`mode: 'loop'`, that's a head clone and a tail clone each — 3× every
+value). Every clone therefore also has:
+
+- Every `name` attribute stripped — on the clone root itself (if it has
+  one) and every descendant — so no clone control is a "successful
+  control" at all, regardless of DOM nesting or a `form="other-form-id"`
+  attribute pointing elsewhere.
+- Every native form control (`input`, `select`, `textarea`, `button`)
+  `.disabled = true` — a DOM property write, not styling — which also
+  drops it from the tab order without relying solely on `inert`.
+
+Both are plain DOM property/attribute operations; neither touches `style`
+or any form-submission API directly. Real slide controls are never
+touched by this — their `name`, value, checked state, and `disabled` state
+are exactly what you set. See `LoopEngine.cloneNeutralized()` in
+`src/core/loop.ts` and `tests/e2e/form-safety.spec.ts`.
+
+## `animate: false` is genuinely immediate
+
+The structural CSS declares `.csp-slider__track { scroll-behavior: smooth
+}`. `track.scrollTo({ behavior: 'auto' })` alone is not a guaranteed
+override of that — the CSSOM View spec permits a UA to still defer to the
+computed `scroll-behavior`, so a scroll requested as "immediate" could
+still animate. Rather than relying on the `scrollTo()` option by itself,
+every non-animated scroll (`goTo(..., { animate: false })`, initial
+`startIndex` placement, `refresh()`/`update()`/resize realignment) applies
+a track class — `csp-slider__track--instant` — that sets
+`scroll-behavior: auto` (and, like `--correcting` below, also
+`scroll-snap-type: none`, since a JS-computed target position is not
+always bit-exact with the browser's own internal snap-point coordinate,
+particularly in RTL layouts) for the duration of the jump, then removes it
+two animation frames later. This is the same external-class mechanism
+`LoopEngine`'s own boundary-correction jump already used
+(`csp-slider__track--correcting`), consolidated into one shared helper
+(`applyTrackClassTemporarily`/`clearTrackTemporaryClass` in
+`src/core/dom.ts`): applying a class this way is a plain
+`classList`/attribute operation, not a style write. Each call cancels any
+previously-scheduled removal for the same track+class pair first, so a
+stale callback from an earlier or destroyed operation can never remove a
+class a newer one still depends on — verified in
+`tests/e2e/loop-raf-safety.spec.ts` and `tests/e2e/immediate-scroll.spec.ts`.
 
 ## Touch vs. mouse drag
 

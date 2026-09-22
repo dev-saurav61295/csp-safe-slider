@@ -1,11 +1,19 @@
 import { AutoplayController } from './autoplay.js';
+import { DomOwnership } from './attrs.js';
 import { Controls, type ControlsLabels } from './controls.js';
 import { DragController } from './drag.js';
-import { FOCUSABLE_SELECTOR_ALL, prefersReducedMotion, resolveDirection } from './dom.js';
+import {
+  applyTrackClassTemporarily,
+  clearTrackTemporaryClass,
+  FOCUSABLE_SELECTOR_ALL,
+  prefersReducedMotion,
+  resolveDirection,
+  watchReducedMotion,
+} from './dom.js';
 import { Emitter } from './events.js';
 import { nearestSlideIndex, targetScrollFor } from './geometry.js';
 import { KeyboardController } from './keyboard.js';
-import { LoopEngine } from './loop.js';
+import { CORRECTING_CLASS, LoopEngine } from './loop.js';
 import { DEFAULT_OPTIONS, normalizeOptions } from './options.js';
 import {
   canGoNext,
@@ -29,6 +37,7 @@ import type {
 
 const SLIDE_SELECTOR = '[data-slider-slide]';
 const TRACK_SELECTOR = '[data-slider-track]';
+const INSTANT_SCROLL_CLASS = 'csp-slider__track--instant';
 
 export interface CreateSliderInit extends SliderInit {
   labels?: Partial<ControlsLabels>;
@@ -49,14 +58,34 @@ export function createSlider(root: HTMLElement, init: CreateSliderInit = {}): Sl
   }
   const track: HTMLElement = trackCandidate;
 
-  const reduceMotion = prefersReducedMotion();
   let options: SliderOptions = normalizeOptions(init, DEFAULT_OPTIONS);
-  if (reduceMotion && options.reducedMotion) {
-    options = { ...options, autoplay: false };
+
+  // Always re-queries the live media state rather than caching it from the
+  // `watchReducedMotion` listener below — the listener's 'change' event
+  // dispatches asynchronously (a task, not a microtask), so a cached value
+  // updated only from that callback would still read stale immediately
+  // after a synchronous preference flip (observable in tests that emulate
+  // the media change and call an API in the same tick). A live
+  // `matchMedia(...).matches` read has no such lag. Combined with
+  // `options.reducedMotion` — "should this instance respect that state at
+  // all" — this is the one place that decides whether motion is currently
+  // suppressed. Unlike the previous implementation, the configured
+  // `autoplay` option itself is never mutated because of this — doing so
+  // permanently lost the distinction between "never configured" and
+  // "configured but currently suppressed", making it impossible to resume
+  // once the preference changed back. See docs/ACCESSIBILITY.md.
+  function reduceMotionActive(): boolean {
+    return options.reducedMotion && prefersReducedMotion();
   }
 
   const emitter = new Emitter();
   const loopEngine = new LoopEngine(track, options.axis);
+  const owned = new DomOwnership();
+  // Every real slide element this instance has ever discovered, across every
+  // refresh() — not pruned when a slide is later removed from the track, so
+  // destroy() can still restore an element even if the caller detached it
+  // from the DOM without calling refresh() first.
+  const managedSlides = new Set<HTMLElement>();
   let realSlides: HTMLElement[] = [];
   let index = 0;
   let previousIndex = 0;
@@ -141,6 +170,26 @@ export function createSlider(root: HTMLElement, init: CreateSliderInit = {}): Sl
     },
   );
 
+  /**
+   * Applies the *current* combined reduced-motion state to already-running
+   * autoplay. Called both on a live OS preference change and right after an
+   * `update()` that changes `reducedMotion` — either can newly activate
+   * suppression, and either must take effect immediately rather than
+   * waiting for the next autoplay tick. Switching *out* of suppression
+   * deliberately does nothing here: autoplay that was stopped for reduced
+   * motion never restarts on its own, only via an explicit `play()` — see
+   * docs/ACCESSIBILITY.md.
+   */
+  function reconcileReducedMotion(): void {
+    if (reduceMotionActive() && autoplay.isPlaying) {
+      autoplay.stop();
+    }
+  }
+
+  const unsubscribeReducedMotion = watchReducedMotion(() => {
+    reconcileReducedMotion();
+  });
+
   let resizeObserver: ResizeObserver | null = null;
 
   // Explicit `direction` support: 'auto' just reads the resolved computed
@@ -173,31 +222,31 @@ export function createSlider(root: HTMLElement, init: CreateSliderInit = {}): Sl
   }
 
   function setTrackLiveRegion(): void {
-    track.setAttribute('aria-live', autoplay.isPlaying ? 'off' : 'polite');
+    owned.setAttr(track, 'aria-live', autoplay.isPlaying ? 'off' : 'polite');
   }
 
   function applyStateAttributes(): void {
     // Explicit tabindex so the track is reliably keyboard-focusable across
     // browsers — some implicitly treat scrollable overflow containers as
     // focusable and some don't, so we don't rely on that being consistent.
-    if (!track.hasAttribute('tabindex')) track.tabIndex = 0;
+    if (!track.hasAttribute('tabindex')) owned.setAttr(track, 'tabindex', '0');
     applyDirection();
-    root.setAttribute('data-slider-axis', options.axis);
-    root.setAttribute('data-slider-mode', options.mode);
-    root.setAttribute('data-slider-effect', options.effect);
-    track.setAttribute('data-slider-axis', options.axis);
-    track.setAttribute('data-slider-effect', options.effect);
-    track.classList.toggle('csp-slider__track--free', options.freeScroll);
+    owned.setAttr(root, 'data-slider-axis', options.axis);
+    owned.setAttr(root, 'data-slider-mode', options.mode);
+    owned.setAttr(root, 'data-slider-effect', options.effect);
+    owned.setAttr(track, 'data-slider-axis', options.axis);
+    owned.setAttr(track, 'data-slider-effect', options.effect);
+    owned.setClass(track, 'csp-slider__track--free', options.freeScroll);
   }
 
   function setupA11y(): void {
     applyStateAttributes();
-    if (!root.hasAttribute('role')) root.setAttribute('role', 'region');
+    if (!root.hasAttribute('role')) owned.setAttr(root, 'role', 'region');
     if (!root.getAttribute('aria-roledescription')) {
-      root.setAttribute('aria-roledescription', 'carousel');
+      owned.setAttr(root, 'aria-roledescription', 'carousel');
     }
     if (!root.getAttribute('aria-label') && !root.getAttribute('aria-labelledby')) {
-      root.setAttribute('aria-label', 'Carousel');
+      owned.setAttr(root, 'aria-label', 'Carousel');
     }
     setTrackLiveRegion();
     labelSlides();
@@ -211,6 +260,18 @@ export function createSlider(root: HTMLElement, init: CreateSliderInit = {}): Sl
   const autoLabelValues = new WeakMap<HTMLElement, string>();
 
   /**
+   * `role="group"` is invalid ARIA on an element whose tag already carries
+   * an implicit interactive role that doesn't permit it as an override
+   * (axe's `aria-allowed-role` rule) — e.g. `<a href>` or `<button>` used
+   * directly as `[data-slider-slide]`. `aria-roledescription` has no such
+   * restriction and still applies to describe the slide either way.
+   */
+  function canForceGroupRole(slide: HTMLElement): boolean {
+    if (slide.tagName === 'A') return !slide.hasAttribute('href');
+    return !['BUTTON', 'INPUT', 'SELECT', 'TEXTAREA'].includes(slide.tagName);
+  }
+
+  /**
    * Default `aria-label`s ("2 of 5") are library-owned and must track slide
    * count across `refresh()`; a consumer-authored `aria-label` (present
    * from the start, or written over a previous default at any point) is
@@ -219,29 +280,31 @@ export function createSlider(root: HTMLElement, init: CreateSliderInit = {}): Sl
   function labelSlides(): void {
     const count = realSlides.length;
     realSlides.forEach((slide, i) => {
-      slide.setAttribute('role', 'group');
-      slide.setAttribute('aria-roledescription', 'slide');
+      if (canForceGroupRole(slide)) owned.setAttr(slide, 'role', 'group');
+      owned.setAttr(slide, 'aria-roledescription', 'slide');
       const currentLabel = slide.getAttribute('aria-label');
       const hasLabelledby = slide.hasAttribute('aria-labelledby');
       const stillOwned =
         slide.hasAttribute('data-slider-auto-label') && currentLabel === autoLabelValues.get(slide);
       const hasForeignLabel = (currentLabel !== null || hasLabelledby) && !stillOwned;
       if (hasForeignLabel) {
-        slide.removeAttribute('data-slider-auto-label');
+        owned.removeAttr(slide, 'data-slider-auto-label');
         autoLabelValues.delete(slide);
         return;
       }
       const value = `${i + 1} of ${count}`;
-      slide.setAttribute('aria-label', value);
-      slide.setAttribute('data-slider-auto-label', '');
+      owned.setAttr(slide, 'aria-label', value);
+      owned.setAttr(slide, 'data-slider-auto-label', '');
       autoLabelValues.set(slide, value);
     });
   }
 
   function queryRealSlides(): HTMLElement[] {
-    return Array.from(track.querySelectorAll<HTMLElement>(SLIDE_SELECTOR)).filter(
+    const slides = Array.from(track.querySelectorAll<HTMLElement>(SLIDE_SELECTOR)).filter(
       (el) => !el.hasAttribute('data-slider-clone') && el.parentElement === track,
     );
+    for (const slide of slides) managedSlides.add(slide);
+    return slides;
   }
 
   function rebuildLoop(): void {
@@ -274,6 +337,19 @@ export function createSlider(root: HTMLElement, init: CreateSliderInit = {}): Sl
     }
   }
 
+  /**
+   * Every focusable element neutralization must consider for a slide: its
+   * descendants (via `querySelectorAll`, which never matches the element
+   * it's called on) plus the slide root itself when the root *is* the
+   * focusable thing — e.g. `<a data-slider-slide>`, `<button
+   * data-slider-slide>`, or a root with an author `tabindex`. Loop clones
+   * use the same rule (see `LoopEngine.cloneNeutralized()`).
+   */
+  function focusablesIn(slide: HTMLElement): HTMLElement[] {
+    const descendants = Array.from(slide.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR_ALL));
+    return slide.matches(FOCUSABLE_SELECTOR_ALL) ? [slide, ...descendants] : descendants;
+  }
+
   function restoreAllFocusables(): void {
     if (neutralizedFocusables.size === 0) return;
     for (const el of neutralizedFocusables) {
@@ -288,15 +364,13 @@ export function createSlider(root: HTMLElement, init: CreateSliderInit = {}): Sl
     if (options.effect !== 'fade') restoreAllFocusables();
     realSlides.forEach((slide, i) => {
       const active = i === index;
-      slide.classList.toggle('csp-slider__slide--active', active);
-      slide.setAttribute('data-state', active ? 'active' : 'inactive');
+      owned.setClass(slide, 'csp-slider__slide--active', active);
+      owned.setAttr(slide, 'data-state', active ? 'active' : 'inactive');
       if (options.effect === 'fade') {
-        slide.setAttribute('aria-hidden', active ? 'false' : 'true');
-        slide.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR_ALL).forEach((el) => {
-          setFocusable(el, active);
-        });
+        owned.setAttr(slide, 'aria-hidden', active ? 'false' : 'true');
+        focusablesIn(slide).forEach((el) => setFocusable(el, active));
       } else {
-        slide.removeAttribute('aria-hidden');
+        owned.removeAttr(slide, 'aria-hidden');
       }
     });
   }
@@ -330,10 +404,18 @@ export function createSlider(root: HTMLElement, init: CreateSliderInit = {}): Sl
     const el = resolveScrollTarget(fromIndex, toIndex);
     if (!el) return;
 
-    const shouldAnimate = animate && !(reduceMotion && options.reducedMotion);
+    const shouldAnimate = animate && !reduceMotionActive();
     const pos = targetScrollFor(track, el, options.axis, options.align);
 
     isAnimating = shouldAnimate;
+    // `behavior: 'auto'` on `scrollTo()` is not on its own a guarantee of an
+    // immediate jump: the CSSOM View spec lets a UA still defer to the
+    // element's computed `scroll-behavior`, which stays `smooth` on
+    // `.csp-slider__track` (see css/csp-safe-slider.css). Forcing
+    // `scroll-behavior: auto` for the duration of the call via an external
+    // class — the same mechanism `LoopEngine` uses for its boundary
+    // correction jump — closes that gap without any inline style.
+    if (!shouldAnimate) applyTrackClassTemporarily(track, INSTANT_SCROLL_CLASS);
     track.scrollTo({
       [options.axis === 'horizontal' ? 'left' : 'top']: pos,
       behavior: shouldAnimate ? 'smooth' : 'auto',
@@ -433,9 +515,10 @@ export function createSlider(root: HTMLElement, init: CreateSliderInit = {}): Sl
     emitter.emit('change', { index, previousIndex, source: 'init' });
 
     if (options.autoplay) autoplay.attach();
-    if (options.autoplay && !(reduceMotion && options.reducedMotion)) {
-      publicApi.play();
-    }
+    // `play()` itself refuses to start while reduced motion is active, so
+    // the configured `autoplay` option is never mutated to reflect
+    // suppression — see `reduceMotionActive()` above.
+    if (options.autoplay) publicApi.play();
   }
 
   const publicApi: Slider = {
@@ -513,7 +596,7 @@ export function createSlider(root: HTMLElement, init: CreateSliderInit = {}): Sl
           // like passing `autoplay` to createSlider() would have.
           autoplay.attach();
           controls?.setAutoplayAvailable(true);
-          if (!(reduceMotion && options.reducedMotion)) publicApi.play();
+          publicApi.play();
         }
         // Autoplay already enabled: never touch play/pause intent here —
         // an explicit prior pause() must stay paused across unrelated
@@ -529,6 +612,10 @@ export function createSlider(root: HTMLElement, init: CreateSliderInit = {}): Sl
       rebuildDots();
       updateControls();
       scrollToIndex(index, index, false);
+      // Covers `update({ reducedMotion: true })` newly activating
+      // suppression while the OS preference is already `reduce` — must
+      // stop autoplay immediately rather than waiting for the next tick.
+      reconcileReducedMotion();
     },
     getState(): SliderState {
       return Object.freeze({
@@ -548,6 +635,11 @@ export function createSlider(root: HTMLElement, init: CreateSliderInit = {}): Sl
     },
     play() {
       if (destroyed || !options.autoplay) return;
+      // Reduced motion always wins over an explicit play() call while it
+      // remains active; only a later preference change (or
+      // `update({ reducedMotion: false })`) followed by another explicit
+      // play() can start rotation again.
+      if (reduceMotionActive()) return;
       autoplay.play();
     },
     pause() {
@@ -574,9 +666,29 @@ export function createSlider(root: HTMLElement, init: CreateSliderInit = {}): Sl
       keyboardController.detach();
       autoplay.detach();
       resizeObserver?.disconnect();
+      unsubscribeReducedMotion();
       loopEngine.teardown();
       restoreAllFocusables();
       restoreDirection();
+
+      // Transient runtime-only classes must never survive past this
+      // instance, however it ends — mid-drag, immediately after a loop
+      // boundary correction, or right after an immediate scroll each
+      // scheduled their own class cleanup for a later frame that may never
+      // get to run.
+      clearTrackTemporaryClass(track, INSTANT_SCROLL_CLASS);
+      clearTrackTemporaryClass(track, CORRECTING_CLASS);
+      track.classList.remove('csp-slider__track--dragging');
+
+      // Puts back every root/track/slide attribute and class this instance
+      // owned — see DomOwnership. `managedSlides` includes slides
+      // discovered by every past `refresh()`, even ones since removed from
+      // the track, so a still-reachable detached node is still cleaned up.
+      owned.restore(root);
+      owned.restore(track);
+      for (const slide of managedSlides) owned.restore(slide);
+      managedSlides.clear();
+
       controls?.destroy();
       emitter.emit('destroy', undefined);
       emitter.clear();

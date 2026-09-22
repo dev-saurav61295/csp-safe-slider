@@ -86,6 +86,27 @@
   user-select: none;
 }
 
+/* Applied for one paint around any programmatic immediate scroll
+   (`goTo(..., { animate: false })`, initial `startIndex` placement,
+   refresh/update/resize realignment) — see `scrollToIndex()` in
+   src/core/slider.ts. `behavior: 'auto'` passed to `scrollTo()` is not
+   itself a guarantee of an instant jump: the CSSOM View spec permits a UA
+   to still defer to the computed `scroll-behavior`, which otherwise stays
+   `smooth` on `.csp-slider__track` above. This class overrides that for the
+   duration of the call without any inline style.
+   `scroll-snap-type: none` is required too, for the same reason
+   `--correcting` above needs it: the JS-computed target position (from
+   `offsetLeft`/`getBoundingClientRect` in geometry.ts) is not always
+   bit-exact with the engine's own internal snap-point coordinate,
+   particularly in RTL layouts. Leaving mandatory snap enabled during a
+   direct, un-animated jump lets it assert its own "nearest" correction
+   against that near-miss — observed in practice landing on the *wrong*
+   adjacent slide entirely, not just a sub-pixel wobble. */
+.csp-slider__track--instant {
+  scroll-snap-type: none;
+  scroll-behavior: auto;
+}
+
 .csp-slider__slide {
   flex: 0 0 var(--slider-slide-size);
   scroll-snap-align: start;

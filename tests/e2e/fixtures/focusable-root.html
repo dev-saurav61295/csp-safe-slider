@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>csp-safe-slider — focusable slide-root fixture</title>
+    <link rel="stylesheet" href="/dist/csp-safe-slider.css" />
+    <link rel="stylesheet" href="/dist/theme.css" />
+  </head>
+  <body>
+    <main>
+      <h1>Focusable slide-root fixture</h1>
+      <!-- Every slide root here is *itself* the focusable element — no
+           focusable descendant is needed to reach it — which is exactly
+           the case `FOCUSABLE_SELECTOR_ALL` descendant scans alone miss. -->
+      <div id="slider" class="csp-slider" aria-label="Focusable roots">
+        <div class="csp-slider__track" data-slider-track>
+          <a href="#panel-1" class="csp-slider__slide" data-slider-slide id="slide-anchor">
+            Anchor slide
+          </a>
+          <button type="button" class="csp-slider__slide" data-slider-slide id="slide-button">
+            Button slide
+          </button>
+          <div class="csp-slider__slide" tabindex="0" data-slider-slide id="slide-tabindex">
+            Tabindex slide
+          </div>
+        </div>
+      </div>
+    </main>
+    <script type="module" src="csp-monitor.js"></script>
+    <script type="module" src="focusable-root.init.js"></script>
+  </body>
+</html>

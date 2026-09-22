@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>csp-safe-slider — form-safety fixture</title>
+    <link rel="stylesheet" href="/dist/csp-safe-slider.css" />
+    <link rel="stylesheet" href="/dist/theme.css" />
+  </head>
+  <body>
+    <main>
+      <h1>Form-safety fixture</h1>
+      <!-- The slider is deliberately NOT nested inside this <form>: every
+           control below associates with it via the `form` attribute
+           instead, so the fixture also exercises the "control uses a form
+           attribute that references an external form" case rather than
+           only plain DOM-ancestry association. -->
+      <form id="mainform"></form>
+
+      <div id="slider" class="csp-slider" aria-label="Order options">
+        <div class="csp-slider__track" data-slider-track>
+          <div class="csp-slider__slide" data-slider-slide id="slide-1">
+            Slide 1
+            <label>Qty <input type="text" name="qty" value="1" form="mainform" id="qty-1" /></label>
+            <label>
+              <input
+                type="checkbox"
+                name="agree"
+                value="yes"
+                checked
+                form="mainform"
+                id="agree-1"
+              />
+              Agree
+            </label>
+          </div>
+          <div class="csp-slider__slide" data-slider-slide id="slide-2">
+            Slide 2
+            <label>Qty <input type="text" name="qty" value="2" form="mainform" id="qty-2" /></label>
+            <label>
+              Color
+              <select name="color" form="mainform" id="color-2">
+                <option value="red">Red</option>
+                <option value="blue" selected>Blue</option>
+              </select>
+            </label>
+            <label>
+              Notes
+              <textarea name="notes" form="mainform" id="notes-2">hello</textarea>
+            </label>
+            <label>
+              <input type="radio" name="plan" value="pro" checked form="mainform" id="plan-2" />
+              Pro plan
+            </label>
+          </div>
+        </div>
+      </div>
+    </main>
+    <script type="module" src="csp-monitor.js"></script>
+    <script type="module" src="form.init.js"></script>
+  </body>
+</html>

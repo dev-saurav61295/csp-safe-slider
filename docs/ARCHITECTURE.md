@@ -95,6 +95,155 @@ silently corrected the resulting near-miss target to the nearest real
 slide; it broke outright once loop mode needed to land on a _specific
 clone_ rather than "whichever slide is closest." See `src/core/geometry.ts`.
 
+**A second, previously-masked RTL defect, found while fixing `animate:
+false` to be genuinely immediate (1.1.1):** `LoopEngine.correctBoundary()`
+computes `realBlockSize` as `headClones[0].offsetLeft - realSlides[0].offsetLeft`.
+In a `direction: ltr` layout this is positive (DOM order and offset
+increase together); in `rtl` it's **negative** (DOM order and offset move
+in opposite directions — see the note above). The boundary-correction
+logic compared `pos` against `realStart`/`realEnd` assuming `realEnd >
+realStart`, and separately bailed out entirely whenever `realBlockSize <=
+0` — both assumptions only hold for the positive (`ltr`) case, so RTL loop
+correction silently never ran at all. This shipped undetected because the
+_other_ bug this release fixes (`animate: false` not actually being
+immediate — see [CSP.md](CSP.md#animate-false-is-genuinely-immediate))
+happened to mask it: the old, still-animated "immediate" scroll let the
+browser's own smooth-scroll-plus-mandatory-snap coordination land on a
+valid position by itself, without ever needing the JS correction to run.
+Once the scroll became genuinely instant, the JS-computed target for a
+direct `goTo()` from a fresh index (which deliberately routes through a
+neighboring clone — see `resolveScrollTarget()`) stayed parked in clone
+territory, uncorrected, in RTL specifically. Fixed by scaling every
+boundary comparison by `Math.sign(realBlockSize)` instead of assuming a
+fixed positive direction, and changing the bailout to `=== 0` rather than
+`<= 0`. See `correctBoundary()` in `src/core/loop.ts` and the RTL wrap
+test in `tests/e2e/loop.spec.ts`.
+
+## DOM ownership and restoration
+
+**Decision**: `destroy()` restores every attribute/class this instance
+applied to the root, track, and each slide it has managed — not just the
+handful (loop clones, controls, listeners) an earlier release cleaned up.
+This is implemented by a small per-instance tracker, `DomOwnership` (see
+`src/core/attrs.ts`), rather than by hand-rolling a bespoke "remember and
+restore" pair for every individual attribute.
+
+**Why a generic tracker instead of more bespoke fields (like the existing
+`explicitDirApplied`/`originalDirAttr` pair for `dir`)?** The set of
+attributes/classes the library owns on the root/track/each slide is large
+(role, `aria-roledescription`, `aria-label`, `data-slider-*`, `data-state`,
+`aria-hidden`, `tabindex`, `aria-live`, several track classes) and grows
+with any future feature; a hand-written original-value field per attribute
+per element type does not scale and is exactly the kind of repetitive
+bookkeeping that's easy to get wrong or forget for a new attribute later.
+A generic `setAttr`/`removeAttr`/`setClass` + `restore(el)` API, called
+from every site that already mutates one of these properties, keeps the
+tracking co-located with the mutation itself.
+
+**Why "ownership-aware" (first-touch-original, last-write comparison)
+rather than a straight snapshot/restore?** Two requirements are in
+tension: (1) `destroy()` must put back what was there _before this
+instance ever touched it_, not what was there right before `destroy()`
+runs; and (2) if the consumer deliberately overwrites a library-generated
+value after init (the existing `labelSlides()` "foreign label" dance
+already had to solve this for `aria-label` specifically), `destroy()`
+must not silently clobber that deliberate edit back to the pre-init state.
+`DomOwnership` resolves both by recording the _original_ value on first
+write (never overwritten by later writes) and separately recording the
+_last value this instance itself wrote_; `restore()` only reverts a
+property if its live value still matches that last-written value —
+otherwise something else (the consumer) took ownership in the meantime,
+and that edit is left alone.
+
+**Why track slides in a `Set` that's never pruned, rather than only the
+currently-live slide list?** `refresh()` re-discovers real slides from the
+DOM every time; a slide removed since a previous `refresh()` would
+otherwise be dropped from tracking and never restored on `destroy()`, even
+though the DOM node (and its now-stale library-owned attributes) might
+still be reachable through consumer code that detached it without going
+through the library at all. Keeping every slide ever discovered in a
+`managedSlides` set, and iterating all of them at `destroy()` regardless
+of current DOM attachment, means restoration remains possible for as long
+as the node itself is reachable.
+
+## Reduced motion: a live media-query subscription, not a read-once flag
+
+**Decision**: `prefers-reduced-motion` is queried fresh on every check
+(`reduceMotionActive()` calls `matchMedia(...).matches` live) rather than
+cached from a single read at `createSlider()` time, and a
+`change`-event subscription proactively stops autoplay the moment the
+preference flips, rather than waiting for the next autoplay tick to
+"notice."
+
+**Why live rather than cached-and-listener-updated?** An earlier draft of
+this fix cached the media state in a variable, updated only from the
+`change` event listener's callback. That listener's event dispatches
+asynchronously (a task, not a microtask) — Playwright's media-emulation
+API (and, in principle, a real OS-level preference flip observed via CDP
+or similar) can change the underlying value before that event has had a
+chance to fire, which made a synchronous "flip the preference, then call
+`play()`" test sequence read stale state and behave inconsistently.
+Querying `matchMedia(...).matches` fresh on every check has no such lag;
+the `change` listener is kept purely to _proactively_ stop already-running
+autoplay the moment a flip happens, rather than to serve as the source of
+truth for the current state.
+
+**Why never mutate the configured `autoplay` option itself?** The
+previous implementation set `options.autoplay = false` during
+initialization whenever reduced motion was active at that moment. That
+permanently erased the distinction between "autoplay was never
+configured" and "autoplay is configured but currently suppressed" — once
+erased, there was no way to tell `getState()`/`update()` apart, and no way
+to resume autoplay if the preference later changed back, short of calling
+`update({ autoplay: {...} })` again from scratch. Gating `play()` itself
+(and the internal auto-start call) on `reduceMotionActive()`, without
+touching the stored option, keeps the configuration intact and makes an
+explicit `play()` call after the preference changes back "just work."
+
+## Autoplay teardown: attachment as the single gate for scheduling work
+
+**Decision**: `AutoplayController.startTimer()` refuses to schedule
+anything unless the controller is currently `attached`; `detach()` resets
+`running` and every transient suspension flag, not just the timer/
+listeners; and the `IntersectionObserver` callback itself checks
+`attached` before doing anything.
+
+**Why three separate guards for what sounds like one problem?** Each
+guards a different path back into scheduling new work after teardown was
+supposed to be final: `detach()`'s flag reset is what makes
+`getState().isAutoplaying` correctly read `false` immediately after
+`destroy()` (the previous version cleared the timer/listeners but left
+`running` untouched, so the getter — which is just `running &&
+!isSuspended` — kept reporting stale intent); the `IntersectionObserver`
+guard specifically covers a callback that was already queued in the
+browser's task queue at the exact moment `disconnect()` ran (disconnecting
+an observer does not retroactively cancel a callback already in flight);
+and `startTimer()`'s own guard is the last, most general choke point —
+every path that could ever call it (direct `play()`, `reconcile()` from
+any suspension-flag change, `notifyInteraction()`) passes through it, so
+guarding there is sufficient even for a path this list didn't anticipate.
+
+## Loop-correction animation frames: identity-tracked cleanup, not bare `requestAnimationFrame`
+
+**Decision**: the track class applied for a loop boundary-correction jump
+(and, as of 1.1.1, for any other programmatic immediate scroll — see
+[CSP.md](CSP.md#animate-false-is-genuinely-immediate)) is applied/removed
+through a shared helper (`applyTrackClassTemporarily`/
+`clearTrackTemporaryClass` in `src/core/dom.ts`) keyed by `(track,
+className)`, rather than each call site scheduling its own bare nested
+`requestAnimationFrame` pair.
+
+**Why**: a bare `requestAnimationFrame(() => requestAnimationFrame(() =>
+track.classList.remove(cls)))` has no way to know if a _newer_ call for
+the same track/class has since superseded it — `teardown()`/`destroy()`
+had no way to cancel a pending one either, since the raw frame IDs weren't
+kept anywhere. The shared helper keeps the pending frame IDs (so
+`clearTrackTemporaryClass` can `cancelAnimationFrame` them outright) and a
+per-call identity object (so a scheduled cleanup checks "am I still the
+current operation for this class?" before touching the class at all) —
+together, a stale callback from a destroyed instance or a superseded
+operation can never interfere with a newer one on the same track.
+
 ## Layout/theme in CSS, behavior in JS — enforced by what JS is allowed to write
 
 **Decision**: every dimension/color/spacing is a CSS custom property

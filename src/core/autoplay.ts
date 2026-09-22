@@ -39,10 +39,23 @@ export class AutoplayController {
     this.attachListeners();
   }
 
+  /**
+   * Final and idempotent: clears the timer, drops listeners, and — unlike
+   * an earlier version of this method — also resets `running` and every
+   * transient suspension flag. Leaving `running` untouched here was the
+   * root cause of `getState().isAutoplaying` reporting `true` after
+   * `slider.destroy()`: nothing else ever cleared it once a queued
+   * `IntersectionObserver` callback or timer tick could no longer reach a
+   * live timer to restart.
+   */
   detach(): void {
     this.clearTimer();
     this.detachListeners();
     this.attached = false;
+    this.running = false;
+    this.suspendedByHover = false;
+    this.suspendedByHidden = false;
+    this.suspendedByOffscreen = false;
   }
 
   private attachListeners(): void {
@@ -60,6 +73,11 @@ export class AutoplayController {
     if (this.opts.pauseOnOffscreen && typeof IntersectionObserver !== 'undefined') {
       this.io = new IntersectionObserver(
         ([entry]) => {
+          // A callback can already be queued at the moment `disconnect()`
+          // runs; without this guard it would still run afterward and call
+          // `reconcile()`, which could spin up a brand-new timer on a
+          // controller that is supposed to be fully detached.
+          if (!this.attached) return;
           this.suspendedByOffscreen = !(entry?.isIntersecting ?? true);
           this.reconcile();
         },
@@ -97,6 +115,7 @@ export class AutoplayController {
   }
 
   play(): void {
+    if (!this.attached) return;
     this.running = true;
     this.callbacks.onPlay();
     this.reconcile();
@@ -133,6 +152,11 @@ export class AutoplayController {
   }
 
   private startTimer(): void {
+    // A detached controller must never schedule work, however it got here
+    // (a stale queued callback, a reconcile() call racing teardown, etc.) —
+    // this is the single choke point every path to a new timer passes
+    // through, so guarding here is sufficient on its own.
+    if (!this.attached) return;
     this.clearTimer();
     this.timer = setInterval(() => this.callbacks.advance(), this.opts.interval);
   }

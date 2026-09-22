@@ -27,5 +27,6 @@ window.__slider = createSlider(root, {
   autoplay: params.get('autoplay') === 'true' ? { interval: 200 } : false,
   keyboard: true,
   draggable: true,
+  reducedMotion: params.get('reducedMotion') !== 'false',
 });
 window.__sliderReady = true;

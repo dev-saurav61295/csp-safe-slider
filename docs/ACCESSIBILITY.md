@@ -44,27 +44,31 @@ onclick>`. Prev/next are `disabled` (not just visually hidden) at the
   `aria-live` on the track is `"off"` while autoplay is actively rotating
   and `"polite"` otherwise, so manual navigation is announced but rotation
   doesn't flood a live region.
-- **Reduced motion**: `prefers-reduced-motion: reduce` disables autoplay by
-  default (`reducedMotion: true` is the default option) and forces instant
-  (non-smooth) scrolling for programmatic navigation; the fade-effect CSS
-  transition is also removed under this media query in
-  `css/csp-safe-slider.css`.
-- **Loop clones excluded from the a11y tree and tab order**: `aria-hidden`,
-  the `inert` property, and `tabindex="-1"` on focusable descendants — see
-  [CSP.md](CSP.md#how-seamless-loop-stays-csp-safe).
+- **Reduced motion**: see the [dedicated section](#reduced-motion) below.
+- **Loop clones excluded from the a11y tree, tab order, and form
+  submission**: `aria-hidden`, the `inert` property, `tabindex="-1"` on
+  focusable content (including the clone's own root element, if that's
+  what's focusable), stripped `name` attributes, and disabled native form
+  controls — see [CSP.md](CSP.md#how-seamless-loop-stays-csp-safe) and
+  [CSP.md](CSP.md#loop-clones-cannot-duplicate-form-submissions).
 - **Focus preservation**: navigation never moves or removes the
   currently-focused element; `refresh()`/`update()` don't rebuild slide
   DOM nodes, only re-scan/re-label them.
 - **Fade-mode focus lifecycle**: inactive slides under `effect: 'fade'`
-  get `aria-hidden="true"` and every focusable descendant forced to
-  `tabindex="-1"`; activating a slide restores each descendant's
-  _original_ tabindex exactly (removing the attribute if it had none,
-  restoring a consumer-set value like `tabindex="0"` if it had one — not
-  just blanket-removing the attribute, which would silently strip a
-  consumer's own tabindex the first time their content became inactive).
-  Switching from `fade` to `slide` (via `update()`) restores every
-  currently-neutralized element in one pass, so no stale
-  `aria-hidden`/`tabindex="-1"` survives an effect change.
+  get `aria-hidden="true"` and every focusable descendant, _and the slide
+  root itself if the root is the focusable thing_ (e.g. `<a
+data-slider-slide>`, `<button data-slider-slide>`, or a root with an
+  author `tabindex`), forced to `tabindex="-1"`; activating a slide
+  restores each one's _original_ tabindex exactly (removing the attribute
+  if it had none, restoring a consumer-set value like `tabindex="0"` if it
+  had one — not just blanket-removing the attribute, which would silently
+  strip a consumer's own tabindex the first time their content became
+  inactive). Switching from `fade` to `slide` (via `update()`) restores
+  every currently-neutralized element in one pass, so no stale
+  `aria-hidden`/`tabindex="-1"` survives an effect change, and `destroy()`
+  restores every one of them too, along with `aria-hidden` itself and the
+  `data-state`/effect attributes that drive the fade CSS — so a destroyed
+  fade slider never leaves a slide looking or behaving hidden.
 - **Forced-colors / high-contrast**: `@media (forced-colors: active)`
   rules keep control borders visible in `css/csp-safe-slider.css`.
 - **RTL / direction**: `direction: 'auto'` (the default) reads the
@@ -76,6 +80,46 @@ onclick>`. Prev/next are `disabled` (not just visually hidden) at the
   and scroll-position math both key off the same resolved value either
   way, so layout, navigation, keyboard behavior, and `getState().direction`
   always agree.
+
+## Reduced motion
+
+`reducedMotion: true` (the default) means this instance respects the live
+`prefers-reduced-motion` media query for as long as the option stays
+`true`; `reducedMotion: false` means the JS behavior below never applies,
+regardless of the OS preference (CSS still independently disables the
+fade-effect transition and forces `scroll-behavior: auto` under
+`@media (prefers-reduced-motion: reduce)` in `css/csp-safe-slider.css` —
+that CSS rule is unconditional and not affected by this option).
+
+While `reducedMotion: true` and the OS currently reports `reduce`:
+
+- **Initialization**: if `autoplay` was configured, it does not start.
+  Unlike an earlier implementation, the _configured_ `autoplay` option
+  itself is never mutated or discarded — `getState().isAutoplaying` is
+  `false`, but the rotation control still renders (since autoplay _is_
+  configured) and an explicit `play()` remains available for later.
+- **Runtime preference changes**: a `prefers-reduced-motion` change is
+  watched live (not read once at init). Switching _to_ `reduce` while
+  autoplay is actively running stops it immediately. `play()` (whether
+  called directly or via the built-in rotation button) is a no-op for as
+  long as the preference stays `reduce`.
+- **Switching back to `no-preference`**: autoplay that was stopped for
+  reduced motion does **not** silently resume — resuming always requires
+  an explicit `play()` call after the preference changes back. This is
+  deliberate: a user who enabled reduced motion and then had their system
+  briefly report `no-preference` (e.g. a transient OS/browser quirk)
+  should never be surprised by motion starting on its own.
+- **Programmatic navigation**: `next()`/`prev()`/`goTo()` and internal
+  realignment (`refresh()`, `update()`, resize) are all immediate rather
+  than smoothly animated, even if you pass `animate: true` explicitly.
+- **`update({ reducedMotion })`**: takes effect immediately in both
+  directions. Setting it to `true` while the OS already reports `reduce`
+  stops any currently-running autoplay right away. Setting it to `false`
+  makes the OS preference stop affecting this instance's behavior from
+  that point on — again, without auto-resuming any autoplay that had
+  already been stopped.
+- **`destroy()`**: removes the media-query listener; no callback from it
+  can affect the instance afterward.
 
 ## Automated checks
 
@@ -101,6 +145,17 @@ real assistive-technology testing.
 - [x] Reduced-motion preference disables autoplay
 - [x] Focus entering the carousel stops autoplay; blur alone doesn't resume it
 - [x] `disabled` state on prev/next reflects actual boundary reachability
+- [x] (1.1.1) A focusable slide root itself (`<a>`/`<button>`/`tabindex`
+      root, not just a descendant) is neutralized while inactive/cloned and
+      restored exactly on activation/`destroy()`
+- [x] (1.1.1) `destroy()` on a fade slider leaves no slide visually or
+      semantically hidden (no stale `aria-hidden`/`data-state`/effect
+      attributes)
+- [x] (1.1.1) Runtime `prefers-reduced-motion` changes (via
+      Playwright's media emulation, not a real OS toggle) stop/prevent
+      autoplay and don't silently resume it
+- [x] (1.1.1) Axe scan against the focusable-slide-root fixture in both
+      fade and loop mode, zero violations
 
 ### Pending — requires a real screen reader + real device, not run this session
 
