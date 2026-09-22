@@ -1,7 +1,7 @@
 import { AutoplayController } from './autoplay.js';
 import { Controls, type ControlsLabels } from './controls.js';
 import { DragController } from './drag.js';
-import { FOCUSABLE_SELECTOR, prefersReducedMotion, resolveDirection } from './dom.js';
+import { FOCUSABLE_SELECTOR_ALL, prefersReducedMotion, resolveDirection } from './dom.js';
 import { Emitter } from './events.js';
 import { nearestSlideIndex, targetScrollFor } from './geometry.js';
 import { KeyboardController } from './keyboard.js';
@@ -16,6 +16,7 @@ import {
   resolveGoTo,
 } from './state.js';
 import type {
+  AutoplayOptions,
   ChangeSource,
   GoToOptions,
   Slider,
@@ -55,7 +56,7 @@ export function createSlider(root: HTMLElement, init: CreateSliderInit = {}): Sl
   }
 
   const emitter = new Emitter();
-  const loopEngine = new LoopEngine(track, [], options.axis);
+  const loopEngine = new LoopEngine(track, options.axis);
   let realSlides: HTMLElement[] = [];
   let index = 0;
   let previousIndex = 0;
@@ -83,9 +84,12 @@ export function createSlider(root: HTMLElement, init: CreateSliderInit = {}): Sl
     : null;
   if (controls) root.append(controls.root);
 
+  // Axis/threshold are read live via getters (not captured at construction)
+  // so an `update()` that changes them takes effect without recreating the
+  // controller or risking duplicate/leaked listeners.
   const dragController = new DragController(track, {
-    axis: options.axis,
-    threshold: options.dragThreshold,
+    getAxis: () => options.axis,
+    getThreshold: () => options.dragThreshold,
     onDragStart: () => {
       isDragging = true;
       emitter.emit('dragStart', undefined);
@@ -98,7 +102,7 @@ export function createSlider(root: HTMLElement, init: CreateSliderInit = {}): Sl
 
   const keyboardController = new KeyboardController(
     root,
-    options.axis,
+    () => options.axis,
     () => resolveDirection(root),
     {
       prev: () => publicApi.prev({ source: 'keyboard' } as GoToOptions),
@@ -139,6 +143,35 @@ export function createSlider(root: HTMLElement, init: CreateSliderInit = {}): Sl
 
   let resizeObserver: ResizeObserver | null = null;
 
+  // Explicit `direction` support: 'auto' just reads the resolved computed
+  // `dir` (handled entirely by `resolveDirection()`); 'ltr'/'rtl' write the
+  // native `dir` attribute (a plain DOM attribute, not `style`) so layout,
+  // scrollLeft's RTL sign convention, and `resolveDirection()` all agree.
+  // The pre-existing attribute (if any) is restored once direction goes
+  // back to 'auto' or the instance is destroyed.
+  let explicitDirApplied = false;
+  let originalDirAttr: string | null = null;
+
+  function applyDirection(): void {
+    if (options.direction === 'auto') {
+      restoreDirection();
+      return;
+    }
+    if (!explicitDirApplied) {
+      originalDirAttr = root.getAttribute('dir');
+      explicitDirApplied = true;
+    }
+    root.setAttribute('dir', options.direction);
+  }
+
+  function restoreDirection(): void {
+    if (!explicitDirApplied) return;
+    if (originalDirAttr === null) root.removeAttribute('dir');
+    else root.setAttribute('dir', originalDirAttr);
+    explicitDirApplied = false;
+    originalDirAttr = null;
+  }
+
   function setTrackLiveRegion(): void {
     track.setAttribute('aria-live', autoplay.isPlaying ? 'off' : 'polite');
   }
@@ -148,6 +181,7 @@ export function createSlider(root: HTMLElement, init: CreateSliderInit = {}): Sl
     // browsers — some implicitly treat scrollable overflow containers as
     // focusable and some don't, so we don't rely on that being consistent.
     if (!track.hasAttribute('tabindex')) track.tabIndex = 0;
+    applyDirection();
     root.setAttribute('data-slider-axis', options.axis);
     root.setAttribute('data-slider-mode', options.mode);
     root.setAttribute('data-slider-effect', options.effect);
@@ -169,14 +203,38 @@ export function createSlider(root: HTMLElement, init: CreateSliderInit = {}): Sl
     labelSlides();
   }
 
+  // Tracks the exact value this instance last wrote for a library-owned
+  // default label, so a later `labelSlides()` pass can tell "still ours,
+  // safe to renumber" apart from "consumer has since overwritten this
+  // aria-label directly" — the latter releases ownership rather than
+  // stomping the consumer's new value back to "N of M" on every refresh.
+  const autoLabelValues = new WeakMap<HTMLElement, string>();
+
+  /**
+   * Default `aria-label`s ("2 of 5") are library-owned and must track slide
+   * count across `refresh()`; a consumer-authored `aria-label` (present
+   * from the start, or written over a previous default at any point) is
+   * left untouched from then on.
+   */
   function labelSlides(): void {
     const count = realSlides.length;
     realSlides.forEach((slide, i) => {
       slide.setAttribute('role', 'group');
       slide.setAttribute('aria-roledescription', 'slide');
-      if (!slide.getAttribute('aria-label') && !slide.getAttribute('aria-labelledby')) {
-        slide.setAttribute('aria-label', `${i + 1} of ${count}`);
+      const currentLabel = slide.getAttribute('aria-label');
+      const hasLabelledby = slide.hasAttribute('aria-labelledby');
+      const stillOwned =
+        slide.hasAttribute('data-slider-auto-label') && currentLabel === autoLabelValues.get(slide);
+      const hasForeignLabel = (currentLabel !== null || hasLabelledby) && !stillOwned;
+      if (hasForeignLabel) {
+        slide.removeAttribute('data-slider-auto-label');
+        autoLabelValues.delete(slide);
+        return;
       }
+      const value = `${i + 1} of ${count}`;
+      slide.setAttribute('aria-label', value);
+      slide.setAttribute('data-slider-auto-label', '');
+      autoLabelValues.set(slide, value);
     });
   }
 
@@ -189,20 +247,53 @@ export function createSlider(root: HTMLElement, init: CreateSliderInit = {}): Sl
   function rebuildLoop(): void {
     loopEngine.teardown();
     if (options.mode === 'loop' && options.effect === 'slide') {
-      loopEngine.build();
+      loopEngine.build(realSlides, options.axis);
     }
   }
 
+  // Tracks focusable descendants this instance has forced to tabindex="-1"
+  // for inactive fade slides, and each one's original tabindex value (or
+  // `null` for "had none"), so re-activating a slide restores exactly what
+  // the consumer had — never just `removeAttribute` regardless of origin —
+  // and switching away from `fade` entirely can restore every one of them.
+  const originalTabIndex = new WeakMap<HTMLElement, string | null>();
+  const neutralizedFocusables = new Set<HTMLElement>();
+
+  function setFocusable(el: HTMLElement, focusable: boolean): void {
+    if (focusable) {
+      if (!neutralizedFocusables.has(el)) return;
+      const original = originalTabIndex.get(el) ?? null;
+      if (original === null) el.removeAttribute('tabindex');
+      else el.setAttribute('tabindex', original);
+      neutralizedFocusables.delete(el);
+    } else {
+      if (neutralizedFocusables.has(el)) return;
+      originalTabIndex.set(el, el.getAttribute('tabindex'));
+      el.setAttribute('tabindex', '-1');
+      neutralizedFocusables.add(el);
+    }
+  }
+
+  function restoreAllFocusables(): void {
+    if (neutralizedFocusables.size === 0) return;
+    for (const el of neutralizedFocusables) {
+      const original = originalTabIndex.get(el) ?? null;
+      if (original === null) el.removeAttribute('tabindex');
+      else el.setAttribute('tabindex', original);
+    }
+    neutralizedFocusables.clear();
+  }
+
   function updateSlideStates(): void {
+    if (options.effect !== 'fade') restoreAllFocusables();
     realSlides.forEach((slide, i) => {
       const active = i === index;
       slide.classList.toggle('csp-slider__slide--active', active);
       slide.setAttribute('data-state', active ? 'active' : 'inactive');
       if (options.effect === 'fade') {
         slide.setAttribute('aria-hidden', active ? 'false' : 'true');
-        slide.querySelectorAll(FOCUSABLE_SELECTOR).forEach((el) => {
-          if (!active) el.setAttribute('tabindex', '-1');
-          else el.removeAttribute('tabindex');
+        slide.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR_ALL).forEach((el) => {
+          setFocusable(el, active);
         });
       } else {
         slide.removeAttribute('aria-hidden');
@@ -227,14 +318,20 @@ export function createSlider(root: HTMLElement, init: CreateSliderInit = {}): Sl
     controls.buildDots(computePageCount(realSlides.length, options.slidesToScroll));
   }
 
-  function scrollToIndex(newIndex: number, animate: boolean): void {
+  /**
+   * `fromIndex` is the logical index *before* this navigation (captured by
+   * the caller before `setIndex` mutates the closure's `index`) — required
+   * to detect an adjacent wrap and route through the correct neighboring
+   * clone. Passing `fromIndex === toIndex` (refresh/resize/update/init)
+   * always resolves to a direct, non-clone target.
+   */
+  function scrollToIndex(fromIndex: number, toIndex: number, animate: boolean): void {
     if (options.effect === 'fade') return;
-    const rtl = resolveDirection(root) === 'rtl';
-    const el = resolveScrollTarget(newIndex);
+    const el = resolveScrollTarget(fromIndex, toIndex);
     if (!el) return;
 
     const shouldAnimate = animate && !(reduceMotion && options.reducedMotion);
-    const pos = targetScrollFor(track, el, options.axis, options.align, rtl);
+    const pos = targetScrollFor(track, el, options.axis, options.align);
 
     isAnimating = shouldAnimate;
     track.scrollTo({
@@ -243,18 +340,24 @@ export function createSlider(root: HTMLElement, init: CreateSliderInit = {}): Sl
     } as ScrollToOptions);
   }
 
-  function resolveScrollTarget(newIndex: number): HTMLElement | undefined {
-    if (options.mode === 'loop' && loopEngine.isActive) {
-      const delta = newIndex - index;
-      if (delta > 0 && newIndex < index) {
-        return loopEngine.headSlides[index] ?? realSlides[newIndex];
+  /**
+   * Only an *adjacent* single-step wrap (last -> 0, or 0 -> last) gets
+   * routed through the neighboring clone for a seamless scroll. A
+   * multi-step `slidesToScroll` group or a direct `goTo()` that crosses the
+   * boundary in one call still lands on the correct real slide, just as a
+   * hard jump rather than a seamless scroll — see docs/COMPATIBILITY.md.
+   */
+  function resolveScrollTarget(fromIndex: number, toIndex: number): HTMLElement | undefined {
+    const count = realSlides.length;
+    if (options.mode === 'loop' && loopEngine.isActive && count > 1) {
+      if (fromIndex === count - 1 && toIndex === 0) {
+        return loopEngine.headSlides[toIndex] ?? realSlides[toIndex];
       }
-      if (delta < 0 && newIndex > index) {
-        return loopEngine.tailSlides[index] ?? realSlides[newIndex];
+      if (fromIndex === 0 && toIndex === count - 1) {
+        return loopEngine.tailSlides[toIndex] ?? realSlides[toIndex];
       }
-      // Non-adjacent goTo across the wrap: still valid, just a direct jump.
     }
-    return realSlides[newIndex];
+    return realSlides[toIndex];
   }
 
   function setIndex(newIndex: number, source: ChangeSource): void {
@@ -286,8 +389,7 @@ export function createSlider(root: HTMLElement, init: CreateSliderInit = {}): Sl
     scrollSettleTimer = null;
     if (destroyed) return;
     loopEngine.correctBoundary();
-    const rtl = resolveDirection(root) === 'rtl';
-    const nearest = nearestSlideIndex(track, realSlides, options.axis, rtl);
+    const nearest = nearestSlideIndex(track, realSlides, options.axis);
     isAnimating = false;
     if (nearest !== index) {
       setIndex(nearest, 'scroll');
@@ -295,14 +397,17 @@ export function createSlider(root: HTMLElement, init: CreateSliderInit = {}): Sl
     emitter.emit('settle', { index, previousIndex, source: 'scroll' });
   }
 
+  let resizeRaf = 0;
+
   function attachResizeObserver(): void {
     if (typeof ResizeObserver === 'undefined') return;
-    let raf = 0;
     resizeObserver = new ResizeObserver(() => {
-      if (raf) cancelAnimationFrame(raf);
-      raf = requestAnimationFrame(() => {
-        if (options.mode === 'loop') loopEngine.build();
-        scrollToIndex(index, false);
+      if (resizeRaf) cancelAnimationFrame(resizeRaf);
+      resizeRaf = requestAnimationFrame(() => {
+        resizeRaf = 0;
+        if (destroyed) return;
+        rebuildLoop();
+        scrollToIndex(index, index, false);
       });
     });
     resizeObserver.observe(track);
@@ -324,7 +429,7 @@ export function createSlider(root: HTMLElement, init: CreateSliderInit = {}): Sl
     previousIndex = startIndex;
     updateSlideStates();
     updateControls();
-    scrollToIndex(startIndex, false);
+    scrollToIndex(startIndex, startIndex, false);
     emitter.emit('change', { index, previousIndex, source: 'init' });
 
     if (options.autoplay) autoplay.attach();
@@ -337,13 +442,15 @@ export function createSlider(root: HTMLElement, init: CreateSliderInit = {}): Sl
     next(opts?: GoToOptions) {
       if (destroyed) return;
       const source = opts?.source ?? 'api';
+      const from = index;
       const target = computeStep(index, 1, realSlides.length, options.slidesToScroll, options.mode);
       setIndex(target, source);
-      scrollToIndex(index, opts?.animate ?? true);
+      scrollToIndex(from, index, opts?.animate ?? true);
     },
     prev(opts?: GoToOptions) {
       if (destroyed) return;
       const source = opts?.source ?? 'api';
+      const from = index;
       const target = computeStep(
         index,
         -1,
@@ -352,14 +459,15 @@ export function createSlider(root: HTMLElement, init: CreateSliderInit = {}): Sl
         options.mode,
       );
       setIndex(target, source);
-      scrollToIndex(index, opts?.animate ?? true);
+      scrollToIndex(from, index, opts?.animate ?? true);
     },
     goTo(targetIndex: number, opts?: GoToOptions) {
       if (destroyed) return;
       const source = opts?.source ?? 'api';
+      const from = index;
       const resolved = resolveGoTo(targetIndex, realSlides.length, options.mode);
       setIndex(resolved, source);
-      scrollToIndex(index, opts?.animate ?? true);
+      scrollToIndex(from, index, opts?.animate ?? true);
     },
     refresh() {
       if (destroyed) return;
@@ -370,26 +478,57 @@ export function createSlider(root: HTMLElement, init: CreateSliderInit = {}): Sl
       index = Math.min(index, Math.max(0, realSlides.length - 1));
       updateSlideStates();
       updateControls();
-      scrollToIndex(index, false);
+      scrollToIndex(index, index, false);
       emitter.emit('refresh', undefined);
     },
     update(next: SliderInit) {
       if (destroyed) return;
-      const modeChanging = next.mode !== undefined && next.mode !== options.mode;
-      const axisChanging = next.axis !== undefined && next.axis !== options.axis;
+      const prevAxis = options.axis;
+      const prevMode = options.mode;
+      const prevEffect = options.effect;
+      const wasAutoplayEnabled = options.autoplay !== false;
+
       options = normalizeOptions(next, options);
       applyStateAttributes();
 
+      const axisChanging = options.axis !== prevAxis;
+      const modeChanging = options.mode !== prevMode;
+      const effectChanging = options.effect !== prevEffect;
+      const isAutoplayEnabled = options.autoplay !== false;
+
+      // Drag/keyboard controllers pull axis/threshold live via callbacks
+      // (see drag.ts/keyboard.ts), so no recreation is needed for those —
+      // only the attach/detach state can change here.
       dragController.detach();
       if (options.draggable && options.effect === 'slide') dragController.attach();
 
       keyboardController.detach();
       if (options.keyboard) keyboardController.attach();
 
-      if (modeChanging || axisChanging) rebuildLoop();
+      if (isAutoplayEnabled) {
+        autoplay.updateOptions(options.autoplay as AutoplayOptions);
+        if (!wasAutoplayEnabled) {
+          // Newly enabling autoplay via update() mirrors initial creation:
+          // it establishes listeners/controls and auto-starts, exactly
+          // like passing `autoplay` to createSlider() would have.
+          autoplay.attach();
+          controls?.setAutoplayAvailable(true);
+          if (!(reduceMotion && options.reducedMotion)) publicApi.play();
+        }
+        // Autoplay already enabled: never touch play/pause intent here —
+        // an explicit prior pause() must stay paused across unrelated
+        // option updates (e.g. changing `interval`).
+      } else if (wasAutoplayEnabled) {
+        autoplay.stop();
+        autoplay.detach();
+        controls?.setAutoplayAvailable(false);
+      }
+
+      if (modeChanging || axisChanging || effectChanging) rebuildLoop();
+      if (effectChanging) updateSlideStates();
       rebuildDots();
       updateControls();
-      scrollToIndex(index, false);
+      scrollToIndex(index, index, false);
     },
     getState(): SliderState {
       return Object.freeze({
@@ -429,12 +568,15 @@ export function createSlider(root: HTMLElement, init: CreateSliderInit = {}): Sl
       if (destroyed) return;
       destroyed = true;
       if (scrollSettleTimer) clearTimeout(scrollSettleTimer);
+      if (resizeRaf) cancelAnimationFrame(resizeRaf);
       track.removeEventListener('scroll', onScroll);
       dragController.detach();
       keyboardController.detach();
       autoplay.detach();
       resizeObserver?.disconnect();
       loopEngine.teardown();
+      restoreAllFocusables();
+      restoreDirection();
       controls?.destroy();
       emitter.emit('destroy', undefined);
       emitter.clear();

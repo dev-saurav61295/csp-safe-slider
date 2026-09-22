@@ -1,39 +1,44 @@
 # Maintainer release checklist
 
-This package has **not** been published. No `npm publish` (or
-`--dry-run` variant that talks to npm as the owner) has been run — that
-step is left to the owner, on the owner's machine, with the owner's npm
-credentials.
+**Current state**: `csp-safe-slider` **is already published** — `npm view
+csp-safe-slider versions` returns `['1.0.0', '1.0.1']` from the live
+registry (checked in this release-prep session; re-verify immediately
+before publishing, per the recheck step below). `1.0.1` was an
+unannotated version bump with no source changes from `1.0.0` (confirmed
+via `git show` on that commit) — it shipped the same defects `1.0.0` had,
+which is what a static review of that published artifact found and this
+release (`1.1.0`) fixes. No `npm publish` has been run **by this
+session** — that step remains the owner's, on the owner's machine, with
+the owner's npm credentials.
 
-## Resolved during release preparation
+## Resolved during this release's preparation
 
-- [x] **Package name**: `csp-safe-slider`, unscoped, confirmed available.
-      Last checked **2026-09-21 09:04:55 UTC**: HTTP `404`,
-      body `{"error":"Not found"}` from
-      `https://registry.npmjs.org/csp-safe-slider`. **This is stale by the
-      time you read it — recheck immediately before publishing** (see
-      below).
-- [x] **Copyright/ownership for `LICENSE`**: set to "Saurav Kaushik" (2026),
-      taken from this repository's own `git config user.name`/`user.email`
-      and matching commit authorship — not invented.
-- [x] **`package.json` `repository`/`bugs`/`homepage`**: set from the
-      repository's actual `origin` remote
-      (`github.com/dev-saurav61295/csp-safe-slider`).
-- [x] **`author`**: set to "Saurav Kaushik" for the same reason as the
-      license holder above.
-- [x] **`version`**: set to `1.0.0`. All mandatory automated release gates
-      pass with zero skips (119/119 — see
-      [VALIDATION_REPORT.md](VALIDATION_REPORT.md)), the public API
-      surface is intentionally stable, and the previously-open WebKit
-      mouse-drag test gap was closed (it turned out to be a stale
-      assumption from an earlier Playwright/WebKit build combination, not
-      a real product limitation — re-verified passing 3x in a row across
-      all three browsers). The one thing still genuinely incomplete —
-      real assistive-technology manual testing — is an ongoing-practice
-      item rather than a mandatory behavior gap in the shipped code, and
-      is called out explicitly below and in
-      `COMPATIBILITY.md`/`ACCESSIBILITY.md` rather than silently assumed
-      done.
+- [x] **Package name**: already registered and owned (see above) —
+      nothing to check for availability this time; just confirm you're
+      still authenticated as the right owner (`npm whoami`) before
+      publishing.
+- [x] **`version`**: bumped `1.0.1` → **`1.1.0`** (minor, not patch). Every
+      fix in this release corrects a documented-but-nonfunctional
+      behavior (seamless looping, touch scrolling, most of `update()`)
+      rather than a purely internal bug with no visible behavior change —
+      see [CHANGELOG.md](../CHANGELOG.md#110--2026-09-21) for the
+      version-rationale note and the full fix list, and
+      [VALIDATION_REPORT.md](VALIDATION_REPORT.md) for the finding-to-fix
+      table with regression evidence for each item. No public API was
+      renamed, removed, or given an incompatible signature — the `duration`
+      option is deprecated but still accepted with no behavior change
+      either way, so nothing here is a breaking change requiring a major
+      bump.
+- [x] All mandatory automated release gates pass with zero unexplained
+      failures: 32/32 unit tests, 202/210 e2e (8 intentional,
+      documented skips — see [VALIDATION_REPORT.md](VALIDATION_REPORT.md)),
+      typecheck, lint, format, SSR-import check, packed-tarball consumer
+      check (including a byte-for-byte diff of the packed tarball's
+      `dist/` against the repo's built `dist/`). One pre-existing,
+      environment-attributable flake (WebKit mouse-drag under heavy
+      parallel load) was investigated, bisected to the unmodified `1.0.1`
+      baseline to confirm it isn't a regression, and documented rather
+      than silently retried away.
 - [x] **CI**: `.github/workflows/ci.yml` runs install → lint → typecheck
       → unit tests → build on every push/PR to `main` (matrixed across
       Node 18.x/20.x/22.x), then verifies the built package once (Node
@@ -59,19 +64,28 @@ credentials.
       (VoiceOver, NVDA, TalkBack, real zoomed layouts, real forced-colors
       mode). Automated `axe-core` scans pass; they don't substitute for
       this.
-- [ ] **Recheck the package name immediately before publishing** — the
-      check above is already stale. Re-run:
+- [ ] **Confirm real touch input on a physical device.** This release's
+      touch-scrolling fix was verified with Chromium's CDP touch-event
+      dispatch and a cross-engine `touch-action` CSS assertion (see
+      `tests/e2e/touch.spec.ts`), which is real engine-level touch
+      emulation but not a physical iOS/Android device. Worth a manual
+      pass on an actual phone before or shortly after this release.
+- [ ] **Recheck the published version state immediately before
+      publishing** — package ownership was already confirmed live in this
+      session, but re-run right before you actually publish, since that
+      check goes stale the moment it's made:
 
   ```sh
-  npm view csp-safe-slider name version --registry=https://registry.npmjs.org/
+  npm view csp-safe-slider versions --registry=https://registry.npmjs.org/
+  npm whoami
   ```
 
-  An `E404` is real evidence of absence. A timeout, auth error, or empty
-  search result is not — retry the exact command rather than trusting an
-  ambiguous result. If the name is now taken and not owned by you,
-  **stop** — do not rename automatically or publish under a different
-  identity without updating every reference (`package.json`, imports,
-  docs, tests, consumer fixtures) consistently first.
+  Confirm `1.1.0` is **not** already in the returned `versions` list
+  (npm refuses to republish an existing version anyway, but check first
+  rather than finding out from a failed publish) and that `npm whoami`
+  is the account that owns this package. A timeout or auth error from
+  either command is not the same as a clean result — retry rather than
+  proceeding on an ambiguous answer.
 
 ## Pre-publish verification (run these, don't skip)
 
@@ -87,15 +101,20 @@ npm run test:pack
 npm pack --dry-run
 ```
 
-Expected `npm pack --dry-run` contents (verified during release prep, 12
-files, ~63.1 kB packed / ~259.4 kB unpacked): `dist/` (JS × 2 formats +
-sourcemaps, `.d.ts` × 2, both CSS files), `README.md`, `LICENSE`,
-`CHANGELOG.md`, plus the auto-included `package.json`. `src/`, `tests/`,
-`examples/`, `docs/`, and config files are excluded via the `files`
-allow-list in `package.json` — verify this list hasn't silently grown to
-include something unintended (a stray `.env`, a local log) before every
-publish, since `files` allow-listing is the actual safety mechanism here,
-not `.npmignore` (none exists, by design).
+Expected `npm pack --dry-run` contents (verified during this release's
+prep, 12 files, ~78.9 kB packed / ~312.8 kB unpacked — grew from `1.0.1`'s
+~63.1 kB/~259.4 kB with the loop/controller-coherence/fade-focus fixes):
+`dist/` (JS × 2 formats + sourcemaps, `.d.ts` × 2, both CSS files),
+`README.md`, `LICENSE`, `CHANGELOG.md`, plus the auto-included
+`package.json`. `src/`, `tests/`, `examples/`, `docs/`, and config files
+are excluded via the `files` allow-list in `package.json` — verify this
+list hasn't silently grown to include something unintended (a stray
+`.env`, a local log) before every publish, since `files` allow-listing is
+the actual safety mechanism here, not `.npmignore` (none exists, by
+design). This release's prep additionally diffed the packed tarball's
+extracted `dist/` byte-for-byte against the repo's own built `dist/` —
+identical — confirming the browser test suite (which serves `/dist/*`
+directly) exercises the same bytes that get published.
 
 ## Publishing (owner only, on the owner's machine)
 
@@ -121,11 +140,12 @@ npm run build
 npm pack --dry-run
 npm publish --dry-run
 
-npm view csp-safe-slider name version --registry=https://registry.npmjs.org/
+npm view csp-safe-slider versions --registry=https://registry.npmjs.org/
 ```
 
-For a first release, that final `npm view` is expected to return `E404` —
-confirm it's a genuine npm `E404`, not a connection or auth failure, then:
+This is **not** a first release — the package is already published
+(`1.0.0`, `1.0.1` live). That final `npm view` should list both existing
+versions and confirm `1.1.0` isn't already among them; once confirmed:
 
 ```sh
 npm publish --registry=https://registry.npmjs.org/
@@ -144,9 +164,13 @@ npm install csp-safe-slider
 ```
 
 - [ ] Confirm the public page: `https://www.npmjs.com/package/csp-safe-slider`
-- [ ] Tag the release: `git tag v1.0.0 && git push --tags` — only after
-      confirming with whoever owns push access; this repository has not
-      tagged or pushed a release tag.
+- [ ] Tag the release: `git tag v1.1.0 && git push --tags` — only after
+      confirming with whoever owns push access. `v1.0.1` is already
+      tagged and pushed to `origin` (pointing at the version-bump-only
+      commit `de638c5`); there is no `v1.0.0` tag, so this project's
+      tagging history is already inconsistent — worth the owner's
+      attention independent of this release, but not something to
+      silently "fix" by retagging history here.
 - [ ] Add a new `## [Unreleased]` section to `CHANGELOG.md` for the next
       round of changes.
 - [ ] Re-run the `test:pack`-style checks against the real registry

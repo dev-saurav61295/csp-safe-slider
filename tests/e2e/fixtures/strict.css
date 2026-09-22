@@ -5,3 +5,46 @@
 .csp-slider--narrow .csp-slider__slide {
   --slider-slide-size: 33.333%;
 }
+
+/* Tall filler below the slider so the page itself has vertical overflow —
+   needed to verify page scroll still works over/around the slider (the
+   fixture's <body> would otherwise fit within the viewport with nothing
+   to scroll at all). */
+.page-filler {
+  height: 2000px;
+}
+
+/* The package CSS intentionally leaves sizing to the consumer — a vertical
+   scroller needs *some* explicit height source to have anything to
+   overflow/scroll at all (an auto-height column flex container just hugs
+   its content, so `scrollHeight === clientHeight` and nothing scrolls).
+   Give the fixture's track a real height whenever axis is vertical,
+   whether set at init or switched to later via update(). */
+.csp-slider__track[data-slider-axis='vertical'] {
+  height: 320px;
+}
+
+/* Deliberately unequal per-slide widths, used to verify loop boundary
+   correction is measured from real layout rather than assuming a uniform
+   slide width. Selected by an explicit per-slide marker class rather than
+   `:nth-child` — the loop engine inserts clone siblings around the real
+   slides, which would shift sibling *positions* (but clones do carry the
+   same classes as their source via `cloneNode(true)`, so a class-based
+   rule still applies consistently to a clone and the real slide it
+   stands in for, which is exactly what "clones are visually identical"
+   requires). */
+.csp-slider--varwidth .vw-1 {
+  --slider-slide-size: 220px;
+}
+.csp-slider--varwidth .vw-2 {
+  --slider-slide-size: 380px;
+}
+.csp-slider--varwidth .vw-3 {
+  --slider-slide-size: 160px;
+}
+.csp-slider--varwidth .vw-4 {
+  --slider-slide-size: 300px;
+}
+.csp-slider--varwidth .vw-5 {
+  --slider-slide-size: 240px;
+}

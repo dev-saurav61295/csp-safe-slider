@@ -23,7 +23,7 @@ function isEditableTarget(target: EventTarget | null): boolean {
 export class KeyboardController {
   constructor(
     private root: HTMLElement,
-    private axis: Axis,
+    private getAxis: () => Axis,
     private getDirection: () => 'ltr' | 'rtl',
     private callbacks: KeyboardCallbacks,
   ) {}
@@ -40,8 +40,9 @@ export class KeyboardController {
     if (isEditableTarget(e.target)) return;
 
     const rtl = this.getDirection() === 'rtl';
-    const prevKey = this.axis === 'horizontal' ? (rtl ? 'ArrowRight' : 'ArrowLeft') : 'ArrowUp';
-    const nextKey = this.axis === 'horizontal' ? (rtl ? 'ArrowLeft' : 'ArrowRight') : 'ArrowDown';
+    const axis = this.getAxis();
+    const prevKey = axis === 'horizontal' ? (rtl ? 'ArrowRight' : 'ArrowLeft') : 'ArrowUp';
+    const nextKey = axis === 'horizontal' ? (rtl ? 'ArrowLeft' : 'ArrowRight') : 'ArrowDown';
 
     switch (e.key) {
       case prevKey:

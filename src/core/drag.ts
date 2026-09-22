@@ -1,19 +1,24 @@
 import type { Axis } from './types.js';
 
 export interface DragControllerOptions {
-  axis: Axis;
-  threshold: number;
+  /** Read live so an `update()` that changes `axis` takes effect immediately. */
+  getAxis: () => Axis;
+  /** Read live so an `update()` that changes `dragThreshold` takes effect immediately. */
+  getThreshold: () => number;
   onDragStart: () => void;
   onDragEnd: () => void;
 }
 
 /**
  * Mouse/pen click-and-drag-to-scroll support. Touch input is intentionally
- * left to native browser scrolling (with CSS `touch-action` + scroll-snap
- * defined in the stylesheet) since browsers already provide swipe/momentum
- * scrolling for free there — reimplementing it in JS would only add risk
- * without a CSP benefit. This controller only takes over for
- * `pointerType === 'mouse'`, where there is no native drag-to-scroll.
+ * left to native browser scrolling (native `overflow`/scroll-snap plus a
+ * `touch-action` that permits panning on *both* axes — see
+ * `css/csp-safe-slider.css` — so the track's own scroll axis is actually
+ * reachable by touch, not just the cross axis) since browsers already
+ * provide swipe/momentum scrolling for free there — reimplementing it in
+ * JS would only add risk without a CSP benefit. This controller only takes
+ * over for `pointerType === 'mouse'`, where there is no native
+ * drag-to-scroll.
  *
  * Positioning is done exclusively via the `scrollLeft`/`scrollTop`
  * *properties* (not `style`), so it stays within the CSP contract.
@@ -48,12 +53,12 @@ export class DragController {
 
   private onPointerDown = (e: PointerEvent): void => {
     if (e.pointerType !== 'mouse' || e.button !== 0) return;
+    const axis = this.opts.getAxis();
     this.dragging = true;
     this.moved = false;
     this.pointerId = e.pointerId;
-    this.startClient = this.opts.axis === 'horizontal' ? e.clientX : e.clientY;
-    this.startScroll =
-      this.opts.axis === 'horizontal' ? this.track.scrollLeft : this.track.scrollTop;
+    this.startClient = axis === 'horizontal' ? e.clientX : e.clientY;
+    this.startScroll = axis === 'horizontal' ? this.track.scrollLeft : this.track.scrollTop;
 
     window.addEventListener('pointermove', this.onPointerMove);
     window.addEventListener('pointerup', this.onPointerUp);
@@ -62,10 +67,11 @@ export class DragController {
 
   private onPointerMove = (e: PointerEvent): void => {
     if (!this.dragging || e.pointerId !== this.pointerId) return;
-    const client = this.opts.axis === 'horizontal' ? e.clientX : e.clientY;
+    const axis = this.opts.getAxis();
+    const client = axis === 'horizontal' ? e.clientX : e.clientY;
     const delta = client - this.startClient;
 
-    if (!this.moved && Math.abs(delta) >= this.opts.threshold) {
+    if (!this.moved && Math.abs(delta) >= this.opts.getThreshold()) {
       this.moved = true;
       this.track.classList.add('csp-slider__track--dragging');
       this.opts.onDragStart();
@@ -74,7 +80,7 @@ export class DragController {
 
     e.preventDefault();
     const next = this.startScroll - delta;
-    if (this.opts.axis === 'horizontal') this.track.scrollLeft = next;
+    if (axis === 'horizontal') this.track.scrollLeft = next;
     else this.track.scrollTop = next;
   };
 

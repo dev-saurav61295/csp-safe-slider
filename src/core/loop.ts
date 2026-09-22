@@ -1,5 +1,5 @@
 import { FOCUSABLE_SELECTOR } from './dom.js';
-import { contentSize, currentScrollPos, viewportSize } from './geometry.js';
+import { currentScrollPos } from './geometry.js';
 import type { Axis } from './types.js';
 
 /**
@@ -17,12 +17,15 @@ export class LoopEngine {
   private headClones: HTMLElement[] = [];
   private tailClones: HTMLElement[] = [];
   private realBlockSize = 0;
+  private realSlides: HTMLElement[] = [];
+  private axis: Axis;
 
   constructor(
     private track: HTMLElement,
-    private realSlides: HTMLElement[],
-    private axis: Axis,
-  ) {}
+    axis: Axis,
+  ) {
+    this.axis = axis;
+  }
 
   get isActive(): boolean {
     return this.headClones.length > 0 || this.tailClones.length > 0;
@@ -38,8 +41,16 @@ export class LoopEngine {
     return this.tailClones;
   }
 
-  build(): void {
+  /**
+   * (Re)builds the clone set from the current real slides and axis. Must be
+   * called with the live slide list every time it changes — the engine
+   * never queries the DOM for slides itself, since the caller (slider.ts)
+   * already owns slide discovery.
+   */
+  build(realSlides: HTMLElement[], axis: Axis): void {
     this.teardown();
+    this.realSlides = realSlides;
+    this.axis = axis;
     if (this.realSlides.length < 2) return;
 
     const first = this.realSlides[0];
@@ -52,13 +63,27 @@ export class LoopEngine {
     // Insert tail-derived clones *before* the first real slide (these
     // visually precede the loop start), and head-derived clones *after*
     // the last real slide.
+    //
+    // Tail clones: each `insertBefore(clone, first)` inserts immediately
+    // before the fixed, never-moving `first` anchor, so clones accumulate
+    // in ascending order (tailClones[0..N-1], then the real block) — a
+    // single stable anchor is enough here.
     for (const clone of this.tailClones) {
       parent.insertBefore(clone, first);
     }
+    // Head clones: there is no fixed anchor *after* the real block the way
+    // there is before it, so re-deriving `last.nextSibling` on every
+    // iteration would target a position that shifts with each insert,
+    // silently reversing the order. Insert the whole ascending-order block
+    // in one call instead, at a position captured once, before any clone
+    // exists to shift it.
     const last = this.realSlides[this.realSlides.length - 1];
+    const headAnchor = last?.nextSibling ?? null;
+    const headFragment = document.createDocumentFragment();
     for (const clone of this.headClones) {
-      parent.insertBefore(clone, last?.nextSibling ?? null);
+      headFragment.append(clone);
     }
+    parent.insertBefore(headFragment, headAnchor);
 
     this.realBlockSize = this.measureRealBlockSize();
   }
@@ -99,33 +124,53 @@ export class LoopEngine {
     const last = this.realSlides[this.realSlides.length - 1];
     if (!first || !last) return;
 
-    const viewport = viewportSize(this.track, this.axis);
-    const max = Math.max(0, contentSize(this.track, this.axis) - viewport);
     let pos = currentScrollPos(this.track, this.axis);
 
+    // No RTL-specific handling needed: `offsetLeft` (used for `realStart`)
+    // and `scrollLeft`/`scrollTop` (used for `pos`) are already in the same
+    // coordinate space regardless of direction — see the note on
+    // `targetScrollFor()` in geometry.ts for why an earlier version's extra
+    // RTL shift here was wrong.
     const realStart = this.axis === 'horizontal' ? first.offsetLeft : first.offsetTop;
+    // By construction `realEnd` is exactly `headSlides[0]`'s start edge —
+    // i.e. the position a seamless single-step forward wrap actually lands
+    // on. The boundary check below must therefore treat `pos === realEnd`
+    // as *already in clone territory* (an exclusive `>` here would only
+    // catch overshoot past that exact pixel, which some browsers'
+    // scroll-snap landed on by sub-pixel rounding and others — observed in
+    // WebKit — do not, silently skipping correction and leaving the index
+    // tracker to read the wrong nearest *real* slide instead).
     const realEnd = realStart + this.realBlockSize;
 
-    // Normalize RTL horizontal negative scrollLeft into the same
-    // coordinate space as offsetLeft before comparing.
-    const rtl = this.axis === 'horizontal' && getComputedStyle(this.track).direction === 'rtl';
-    const normalizedPos = rtl ? pos + max : pos;
-
-    if (normalizedPos < realStart - 1) {
+    if (pos <= realStart - 1) {
       pos += this.realBlockSize;
       this.jumpTo(pos);
-    } else if (normalizedPos > realEnd + 1) {
+    } else if (pos >= realEnd - 1) {
       pos -= this.realBlockSize;
       this.jumpTo(pos);
     }
   }
 
   private jumpTo(pos: number): void {
+    // A mandatory `scroll-snap-type` container can, in some engines
+    // (observed in WebKit), asynchronously re-assert its own idea of the
+    // "current" snap target after a direct `scrollLeft`/`scrollTop`
+    // write, overriding this correction back toward the clone position it
+    // had just settled on — even though the corrected position is itself
+    // a valid, equally snap-aligned real slide. Suspending snapping for
+    // one paint around the write (same class the drag controller uses)
+    // avoids that race without needing any inline style.
+    this.track.classList.add('csp-slider__track--correcting');
     if (this.axis === 'horizontal') {
       this.track.scrollLeft = pos;
     } else {
       this.track.scrollTop = pos;
     }
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        this.track.classList.remove('csp-slider__track--correcting');
+      });
+    });
   }
 
   teardown(): void {

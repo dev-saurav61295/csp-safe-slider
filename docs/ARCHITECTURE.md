@@ -52,6 +52,49 @@ reasonable tradeoff for a "content slider" (galleries, testimonials — tens
 of slides, not thousands). This is documented as a real tradeoff in
 [COMPATIBILITY.md](COMPATIBILITY.md), not hidden.
 
+**Correctness notes from getting this actually working** (three separate
+bugs, only observable once the first was fixed and clones started
+building for real):
+
+1. `LoopEngine` originally received its real-slide list once, in its
+   constructor, as a literal `[]` — `slider.ts` never passed the actual
+   discovered slides. `build()` bailed out immediately (`< 2` slides) on
+   every call, so no clones were ever created and boundary correction was
+   a silent no-op, for the entire lifetime of the instance. Fixed by
+   having `build(realSlides, axis)` take the live list explicitly, called
+   fresh from `rebuildLoop()`/`refresh()`/resize.
+2. Wrap-direction clone selection compared the target index against
+   `index` _after_ `setIndex()` had already mutated it to that same
+   value, so the delta was always `0` and the (also self-contradictory:
+   `delta > 0 && newIndex < index`) branch conditions never ran. Fixed by
+   capturing the pre-navigation index in the caller and passing both
+   `fromIndex`/`toIndex` through to target resolution.
+3. With clones finally building, two more defects surfaced immediately:
+   head-clone insertion used `insertBefore(clone, last.nextSibling)` in a
+   loop where `last.nextSibling` shifts with each insert, silently
+   reversing head-clone order; and the boundary-correction "instant" jump
+   (a direct `scrollLeft` write) silently inherited `scroll-behavior:
+smooth` from the track, animating instead of jumping — both invisible
+   until something actually exercised the corrected clone geometry
+   end-to-end. See `src/core/loop.ts` and `tests/e2e/loop.spec.ts` (which
+   asserts on clone DOM order and frame-level scroll samples specifically
+   because a final-logical-index-only test is exactly what let all of
+   this ship undetected).
+
+A related, independently-discovered defect in the RTL scroll-math (not
+loop-specific, but only actually exercised end-to-end by an RTL+loop
+test): `targetScrollFor()`/`nearestSlideIndex()` applied an extra
+`scrollWidth - viewport` shift "to convert to the RTL negative-scrollLeft
+convention." In this codebase's `direction: rtl` flex layout, a child's
+`offsetLeft` is _already_ in that same coordinate space (RTL flex lays
+children out from the container's right edge, so the first child's
+`offsetLeft` lands at ~0, exactly matching unscrolled `scrollLeft`'s
+"start" position) — the extra shift was simply wrong. It went undetected
+for ordinary single-step navigation because mandatory `scroll-snap`
+silently corrected the resulting near-miss target to the nearest real
+slide; it broke outright once loop mode needed to land on a _specific
+clone_ rather than "whichever slide is closest." See `src/core/geometry.ts`.
+
 ## Layout/theme in CSS, behavior in JS — enforced by what JS is allowed to write
 
 **Decision**: every dimension/color/spacing is a CSS custom property
@@ -73,7 +116,8 @@ that are genuinely behavioral (which mode, autoplay timing, thresholds).
 
 **Decision**: `DragController` only engages for `pointerType === 'mouse'`.
 Touch input gets no JS drag handling at all — CSS `touch-action` plus the
-native scroll container already gives swipe/momentum/rubber-banding.
+native scroll container gives swipe/momentum/rubber-banding, provided
+`touch-action` actually permits the browser to pan the track's own axis.
 
 **Why**: reimplementing touch scrolling in JS (common in libraries that
 need transform-based positioning, since a scrollable native container
@@ -82,6 +126,19 @@ recognition for zero CSP benefit here, since native scrolling was already
 the positioning mechanism. Mouse _is_ handled in JS because "click and
 drag to scroll a div" isn't native browser behavior for any element,
 touch or not.
+
+**A correctness note on `touch-action`, since this broke once**: a
+`touch-action` value only lists which pan directions the browser is
+allowed to handle _natively_; anything left out is not "left to the
+browser to figure out," it's actively disallowed. Setting only the
+perpendicular axis (as an earlier version of the CSS did, trying to
+"scope panning to the right axis") tells the engine not to natively pan
+the track's own scroll direction at all — silently defeating the exact
+mechanism this decision relies on, with no JS fallback to catch it since
+the drag controller intentionally ignores touch pointers. The current CSS
+permits both axes (`pan-x pan-y pinch-zoom`) so the track's own axis
+scrolls and the perpendicular axis still passes through to the page. See
+[CSP.md](CSP.md#touch-vs-mouse-drag) and `tests/e2e/touch.spec.ts`.
 
 ## Fade effect: no scroll axis at all, not a scroll-position illusion
 

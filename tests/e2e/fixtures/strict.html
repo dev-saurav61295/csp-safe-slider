@@ -12,16 +12,20 @@
       <h1>Strict CSP fixture</h1>
       <div id="slider" class="csp-slider" aria-label="Product gallery">
         <div class="csp-slider__track" data-slider-track>
-          <div class="csp-slider__slide" data-slider-slide id="slide-1">Slide 1</div>
-          <div class="csp-slider__slide" data-slider-slide id="slide-2">Slide 2</div>
-          <div class="csp-slider__slide" data-slider-slide id="slide-3">
+          <div class="csp-slider__slide vw-1" data-slider-slide id="slide-1">Slide 1</div>
+          <div class="csp-slider__slide vw-2" data-slider-slide id="slide-2">
+            Slide 2
+            <div id="custom-tabindex-el" tabindex="0">Custom-tabindex content</div>
+          </div>
+          <div class="csp-slider__slide vw-3" data-slider-slide id="slide-3">
             Slide 3
             <a href="#slide-3-link" id="in-slide-link">In-slide link</a>
           </div>
-          <div class="csp-slider__slide" data-slider-slide id="slide-4">Slide 4</div>
-          <div class="csp-slider__slide" data-slider-slide id="slide-5">Slide 5</div>
+          <div class="csp-slider__slide vw-4" data-slider-slide id="slide-4">Slide 4</div>
+          <div class="csp-slider__slide vw-5" data-slider-slide id="slide-5">Slide 5</div>
         </div>
       </div>
+      <div class="page-filler" aria-hidden="true"></div>
     </main>
     <script type="module" src="csp-monitor.js"></script>
     <script type="module" src="strict.init.js"></script>

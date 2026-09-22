@@ -66,8 +66,13 @@ export class Controls {
     this.rotationButton.hidden = !hasAutoplay;
     this.rotationButton.addEventListener('click', () => this.callbacks.onToggleAutoplay());
 
+    // Plain button-group semantics (each dot is a labeled `<button>` with
+    // `aria-current` on the active one) rather than a `tablist`/`tab`
+    // pattern — a `tablist` requires roving tabindex plus moving DOM focus
+    // to the newly active tab on every arrow-key-driven change, which
+    // this carousel's global (not per-control) arrow-key handling doesn't
+    // do; a simple button group needs none of that. See docs/ACCESSIBILITY.md.
     this.dotsContainer = createEl('div', { className: 'csp-slider__dots' });
-    this.dotsContainer.setAttribute('role', 'tablist');
 
     this.fraction = createEl('div', { className: 'csp-slider__fraction' });
     this.fraction.setAttribute('aria-hidden', 'true');
@@ -92,7 +97,6 @@ export class Controls {
     for (let i = 0; i < pageCount; i++) {
       const dot = createEl('button', { className: 'csp-slider__dot' });
       dot.type = 'button';
-      dot.setAttribute('role', 'tab');
       dot.setAttribute('aria-label', this.labels.goTo(i));
       dot.addEventListener('click', () => this.callbacks.onGoToPage(i));
       this.dots.push(dot);
@@ -107,8 +111,8 @@ export class Controls {
     this.dots.forEach((dot, i) => {
       const active = i === activePage;
       dot.classList.toggle('csp-slider__dot--active', active);
-      dot.setAttribute('aria-selected', String(active));
-      dot.tabIndex = active ? 0 : -1;
+      if (active) dot.setAttribute('aria-current', 'true');
+      else dot.removeAttribute('aria-current');
     });
 
     this.fraction.textContent = `${activePage + 1} / ${pageCount}`;
@@ -124,6 +128,16 @@ export class Controls {
       playing ? this.labels.rotation.pause : this.labels.rotation.play,
     );
     this.rotationButton.setAttribute('aria-pressed', String(playing));
+  }
+
+  /** Reflects whether autoplay is currently configured — used by `slider.update()`
+   *  when autoplay is enabled/disabled after creation. */
+  setAutoplayAvailable(has: boolean): void {
+    this.hasAutoplay = has;
+    this.rotationButton.hidden = !has;
+    if (!has) {
+      this.rotationButton.removeAttribute('aria-pressed');
+    }
   }
 
   destroy(): void {

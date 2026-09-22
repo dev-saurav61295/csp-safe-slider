@@ -49,3 +49,22 @@ export const FOCUSABLE_SELECTOR = [
   '[tabindex]:not([tabindex="-1"])',
   '[contenteditable="true"]',
 ].join(',');
+
+/**
+ * Same set as `FOCUSABLE_SELECTOR` but without the `:not([tabindex="-1"])`
+ * exclusion. Used where an element that was previously neutralized
+ * (tabindex forced to -1) must still be found again to be restored — the
+ * exclusion in `FOCUSABLE_SELECTOR` would otherwise hide it from itself
+ * once neutralized, permanently losing track of custom-tabindex elements.
+ */
+export const FOCUSABLE_SELECTOR_ALL = [
+  'a[href]',
+  'button:not([disabled])',
+  'input:not([disabled])',
+  'select:not([disabled])',
+  'textarea:not([disabled])',
+  'audio[controls]',
+  'video[controls]',
+  '[tabindex]',
+  '[contenteditable="true"]',
+].join(',');

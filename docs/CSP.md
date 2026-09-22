@@ -66,7 +66,7 @@ content: `aria-hidden="true"`, the `inert` IDL property (a DOM property,
 not a style), stripped `id` attributes (to avoid duplicate IDs), and
 `tabindex="-1"` on any focusable descendant.
 
-## Why touch drag is left to the browser
+## Touch vs. mouse drag
 
 Mouse "click and drag to scroll" isn't a native browser behavior for a
 scrollable `<div>`, so this package implements it in JS (`src/core/drag.ts`)
@@ -74,8 +74,28 @@ using the same `scrollLeft` property-write technique. Touch swipe, on the
 other hand, **is** native browser behavior for any `overflow: auto`
 container — reimplementing it in JS would add risk (fighting the browser's
 own momentum/rubber-banding) without any CSP benefit, so touch input is
-intentionally left to the platform (`touch-action` is set in CSS to scope
-it to the right axis).
+intentionally left to the platform.
+
+That only works if the CSS actually lets the browser do it. An earlier
+version of `css/csp-safe-slider.css` set `touch-action: pan-y` on the
+horizontal track (and `pan-x` on the vertical one) trying to "scope
+panning to the right axis" — but `touch-action` lists which directions the
+browser is allowed to pan _natively_; a value that only lists the
+perpendicular axis tells it **not** to natively pan the track's own scroll
+axis at all. Combined with the JS drag controller only ever handling
+`pointerType === 'mouse'`, touch users could not swipe the slider in
+either axis — the CSS blocked native panning along the track's axis, and
+nothing else picked it up. The fix permits native panning on both axes
+(`touch-action: pan-x pan-y pinch-zoom`, serialized by some engines as the
+equivalent `manipulation`): the track's own axis actually scrolls via
+native touch, and the perpendicular axis still passes through to whatever
+ancestor (typically the page) can scroll it, exactly as before. Pinch/
+double-tap zoom remain enabled throughout (`pinch-zoom` is explicitly
+listed, and neither `none` nor `manipulation`-without-`pinch-zoom` is
+used). Verified with real (CDP-dispatched) touch input in
+`tests/e2e/touch.spec.ts` — see that file's own comment for exactly what
+"real" means here (engine-level touch emulation in a desktop browser, not
+a physical iOS/Android device).
 
 ## The two policies this is tested against
 

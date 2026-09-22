@@ -32,8 +32,17 @@ export interface SliderOptions {
   /** Transition effect. Default 'slide'. */
   effect: TransitionEffect;
   /**
-   * Duration in ms used for programmatic scroll transitions and as the
-   * `--slider-duration` custom property consumers can read in CSS. Default 400.
+   * @deprecated Validated for backward compatibility only — it has no
+   * runtime effect. Neither `slide` nor `fade` timing is JS-configurable:
+   * `effect: 'slide'` uses the browser's native `scrollTo({ behavior:
+   * 'smooth' })`, whose duration/easing the CSSOM View spec doesn't expose
+   * to script at all; `effect: 'fade'` timing is owned entirely by the
+   * external CSS `--slider-duration` custom property, independent of this
+   * option (setting this option does not update that property — doing so
+   * would require a forbidden `element.style` write). Set
+   * `--slider-duration` in your own stylesheet instead. Default 400
+   * (kept only so existing `{ duration: 400 }` callers don't need to
+   * change anything). See docs/API.md#css-custom-property-contract.
    */
   duration: number;
   /** Free-scroll (no snap-to-slide) mode. Default false. */
